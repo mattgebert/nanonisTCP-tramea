@@ -8,6 +8,8 @@ from nanonisTCP import nanonisTCP
 import numpy as np
 
 UINT32 = 4
+UINT16 = 2
+FLOAT32 = 4
 INT_BYTES = 4
 
 class Swp1D:
@@ -27,17 +29,23 @@ class Swp1D:
         channel_indexes :    indexes of the recorded channels. The 
                             indexes correspond to the list of Measurement in the Nanonis software.
         """
+        # Body Length Calculation
+        body_len_bytes = INT_BYTES + len(channel_indexes)*INT_BYTES
+        
         ## Make Header
-        hex_rep = self.nanonisTCP.make_header('1DSwp.AcqChsSet', body_size=len(channel_indexes)*INT_BYTES)
+        hex_rep = self.nanonisTCP.make_header('1DSwp.AcqChsSet', body_size=body_len_bytes)
         
         ## Arguments
+        # Number of channels:
+        hex_rep += self.nanonisTCP.to_hex(len(channel_indexes), 4)
+        # Channel indexes
         for ch in channel_indexes:
-            hex_rep += self.nanonisTCP.to_hex(ch)
+            hex_rep += self.nanonisTCP.to_hex(ch, 4)
         
         self.nanonisTCP.send_command(hex_rep)
         self.nanonisTCP.receive_response()
     
-    def AcqChshGet(self) -> list[int]:
+    def AcqChsGet(self) -> list[int]:
         
         """
         Returns the list of recorded channels of the 1D Sweeper.
@@ -45,10 +53,7 @@ class Swp1D:
         Returns
         channel_indexes :    indexes of the recorded channels. The 
                             indexes correspond to the list of Measurement in the Nanonis software.
-        
-
         """
-
         ## Make Header
         hex_rep = self.nanonisTCP.make_header('1DSwp.AcqChsGet', body_size=0)
         
@@ -73,8 +78,157 @@ class Swp1D:
         
         return channel_indexes
     
+    def SwpSignalGet(self) -> tuple[str, list[str]]:
+        """
+        Returns the selected Sweep signal in the 1D Sweeper.
+
+        Returns
+        -------
+        tuple[str, list[str]]
+            Sweep channel name, and list of signal names.
+        """
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.SwpSignalGet', body_size=0)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        
+        response = self.nanonisTCP.receive_response()
+        
+        sweep_channel_name_size = self.nanonisTCP.hex_to_int32(response[0:4])
+        sweep_channel_name = response[4:4+sweep_channel_name_size].decode()
+        idx = 4+sweep_channel_name_size
+        
+        
+        channel_name_size = self.nanonisTCP.hex_to_int32(response[idx:idx+4])
+        num_channels = self.nanonisTCP.hex_to_int32(response[idx+4:idx+8])
+        idx += 8
+        channel_names = []
+        for n in range(num_channels):
+            size = self.nanonisTCP.hex_to_int32(response[idx:idx+4])
+            idx += 4
+            signal_name = response[idx:idx+size].decode()
+            idx += size
+            channel_names.append(signal_name)
+        return (sweep_channel_name, channel_names)
+        
+    def SwpSignalSet(self, sweep_channel_name:str) -> None:
+        """Sets the Sweep signal in the 1D Sweeper"""
+        
+        # Body Length Calculation
+        body_len_bytes = INT_BYTES + len(sweep_channel_name)
+        
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.SwpSignalSet', body_size=body_len_bytes)
+        
+        ## Arguments
+        # Sweep channel length:
+        hex_rep += self.nanonisTCP.to_hex(len(sweep_channel_name), 4)
+        # Sweep channel name
+        hex_rep += self.nanonisTCP.string_to_hex(sweep_channel_name)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        self.nanonisTCP.receive_response()
+        
+        return
     
+    def LimitsGet(self) -> tuple[float, float]:
+        """Returns the limits of the 1D Sweeper"""
+        
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.LimitsGet', body_size=0)
+        self.nanonisTCP.send_command(hex_rep)
+        response = self.nanonisTCP.receive_response(8)
+        lower_limit = self.nanonisTCP.hex_to_float32(response[0:4])
+        upper_limit = self.nanonisTCP.hex_to_float32(response[4:8])
+        return (lower_limit, upper_limit)
     
+    def LimitsSet(self, lower_limit:float, upper_limit:float) -> None:
+        """Sets the limits of the 1D Sweeper"""
+        
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.LimitsSet', body_size=2*UINT32)
+        
+        ## Arguments
+        # Lower limit
+        hex_rep += self.nanonisTCP.float32_to_hex(lower_limit)
+        # Upper limit
+        hex_rep += self.nanonisTCP.float32_to_hex(upper_limit)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        self.nanonisTCP.receive_response()
+        return
+        
+    def PropsSet(self, 
+                 initial_settling_time: float,
+                 maximum_slew_rate: float,
+                 number_of_steps: int,
+                 period: int,
+                 autosave: bool,
+                 save_dialog: bool,
+                 settling_time: float) -> None:
+        """Sets the properties of the 1D Sweeper
+        
+        Parameters
+        ----------
+        initial_settling_time : float
+            Initial settling time in milliseconds.
+        maximum_slew_rate : float
+            Maximum slew rate in units/s.
+        number_of_steps : int
+            Number of steps.
+        period : int
+            Period in milliseconds.
+        autosave : bool
+            Autosave.
+        save_dialog : bool
+            Save dialog.
+        settling_time : float
+            Settling time in milliseconds.
+        """
+        body_len_bytes = 3*FLOAT32 + 3*UINT32 + 1*UINT16
+        if period > 2**16-1:
+            raise ValueError("Period is too large for a 16 bit unsigned number.")
+        
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.PropsSet', body_size=body_len_bytes)
+        
+        ## Arguments
+        # Initial settling time
+        hex_rep += self.nanonisTCP.float32_to_hex(initial_settling_time)
+        # Maximum slew rate
+        hex_rep += self.nanonisTCP.float32_to_hex(maximum_slew_rate)
+        # Number of steps
+        hex_rep += self.nanonisTCP.to_hex(number_of_steps, 4)
+        # Period
+        hex_rep += self.nanonisTCP.to_hex(period, 2)
+        # Autosave
+        hex_rep += self.nanonisTCP.to_hex(autosave, 4)
+        # Save dialog
+        hex_rep += self.nanonisTCP.to_hex(save_dialog, 4)
+        # Settling time
+        hex_rep += self.nanonisTCP.float32_to_hex(settling_time)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        self.nanonisTCP.receive_response()
+        
+    def PropsGet(self) -> tuple[float, float, int, int, bool, bool, float]:
+        """Returns the properties of the 1D Sweeper"""
+        
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.PropsGet', body_size=0)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        response = self.nanonisTCP.receive_response(3*FLOAT32 + 3*UINT32 + UINT16)
+        
+        initial_settling_time = self.nanonisTCP.hex_to_float32(response[0:4])
+        maximum_slew_rate = self.nanonisTCP.hex_to_float32(response[4:8])
+        number_of_steps = self.nanonisTCP.hex_to_int32(response[8:12])
+        period = self.nanonisTCP.hex_to_uint16(response[12:14])
+        autosave = bool(self.nanonisTCP.hex_to_uint32(response[14:18]))
+        save_dialog = bool(self.nanonisTCP.hex_to_uint32(response[18:22]))
+        settling_time = self.nanonisTCP.hex_to_float32(response[22:26])
+        
+        return (initial_settling_time, maximum_slew_rate, number_of_steps, period, autosave, save_dialog, settling_time)
     
     def Start(self, get_data:bool, sweep_direction:int, save_basename:str, reset_signal:bool):
         ## Make Header

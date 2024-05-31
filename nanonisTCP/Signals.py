@@ -4,15 +4,16 @@ Created on Mon May 30 12:33:59 2022
 
 @author: Julian Ceddia
 """
+from nanonisTCP import nanonisTCP
 
 class Signals:
     """
     Nanonis Signals Module
     """
-    def __init__(self,NanonisTCP):
+    def __init__(self,NanonisTCP : nanonisTCP):
         self.NanonisTCP = NanonisTCP
     
-    def NamesGet(self):
+    def NamesGet(self) -> list[str]:
         """
         Returns the signals names list of the 128 signals available in the 
         software
@@ -43,7 +44,7 @@ class Signals:
         
         return signal_names
     
-    def InSlotSet(self,slot,RTSignalIndex):
+    def InSlotSet(self,slot,RTSignalIndex) -> None:
         """
         Assigns one of the 128 available signals to one of the 24 slots of the 
         Signals Manager.
@@ -68,7 +69,7 @@ class Signals:
         
         self.NanonisTCP.receive_response(0)
     
-    def InSlotsGet(self):
+    def InSlotsGet(self) -> tuple[list[str], list[int]]:
         """
         Returns a list of the signals names and indexes of the 24 signals 
         assigned to the slots of the Signals Manager.
@@ -112,9 +113,9 @@ class Signals:
             signal_index = self.NanonisTCP.hex_to_int32(response[idx:idx+4])
             signal_indexes.append(signal_index)
             
-        return [signal_names,signal_indexes]
+        return (signal_names,signal_indexes)
     
-    def CalibrGet(self,signal_index):
+    def CalibrGet(self,signal_index) -> tuple[float, float]:
         """
         Returns the calibration and offset of the selected signal.
 
@@ -141,9 +142,9 @@ class Signals:
         calibration = self.NanonisTCP.hex_to_float32(response[0:4])
         offset      = self.NanonisTCP.hex_to_float32(response[4:8])
         
-        return [calibration,offset]
+        return (calibration,offset)
     
-    def RangeGet(self,signal_index):
+    def RangeGet(self,signal_index) -> tuple[float, float]:
         """
         Returns the range limits of the selected signal
 
@@ -170,9 +171,9 @@ class Signals:
         max_limit = self.NanonisTCP.hex_to_float32(response[0:4])
         min_limit = self.NanonisTCP.hex_to_float32(response[4:8])
         
-        return [max_limit,min_limit]
+        return (max_limit,min_limit)
     
-    def ValGet(self,signal_index,wait_for_newest_data=True):
+    def ValGet(self,signal_index,wait_for_newest_data=True) -> float:
         """
         Returns the current value of the selected signal (oversampled during 
         the Acquisition Period time, Tap).
@@ -225,3 +226,32 @@ class Signals:
         signal_value = self.NanonisTCP.hex_to_float32(response[0:4])
         
         return signal_value
+    
+    def MeasNamesGet(self) -> list[str]:
+        """
+        Returns the list of measurement channel names available in the software.
+
+        Returns
+        -------
+        measurement_names : Str array of measurement names
+
+        """
+        ## Make Header
+        hex_rep = self.NanonisTCP.make_header('Signals.MeasNamesGet', body_size=0)
+        
+        self.NanonisTCP.send_command(hex_rep)
+        
+        response = self.NanonisTCP.receive_response()
+        
+        # measurement_names_size = self.NanonisTCP.hex_to_int32(response[0:4])
+        measurement_names_num  = self.NanonisTCP.hex_to_int32(response[4:8])
+        
+        idx = 8
+        measurement_names = []
+        for n in range(measurement_names_num):
+            size = self.NanonisTCP.hex_to_int32(response[idx:idx+4])
+            idx += 4
+            measurement_name = response[idx:idx+size].decode()
+            idx += size
+            measurement_names.append(measurement_name)
+        return measurement_names
