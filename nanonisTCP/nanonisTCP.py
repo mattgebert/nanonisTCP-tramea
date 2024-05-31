@@ -11,6 +11,12 @@ import socket
 
 
 class nanonisTCP:
+    """
+    The base class for all Nanonis TCP communication. 
+    
+    This class is used to send and receive messages to and from Nanonis.
+    """
+    
     def __init__(self, IP='127.0.0.1', PORT=6501, max_buf_size=200, version=99999999):
         """
         Parameters

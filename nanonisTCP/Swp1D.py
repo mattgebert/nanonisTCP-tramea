@@ -18,6 +18,25 @@ class Swp1D:
         self.nanonisTCP = NanonisTCP
         self.version = NanonisTCP.version
     
+    
+    def AcqChsSet(self, channel_indexes: list[int]) -> None:
+        """
+        Sets the list of recorded channels of the 1D Sweeper.
+
+        Parameters
+        channel_indexes :    indexes of the recorded channels. The 
+                            indexes correspond to the list of Measurement in the Nanonis software.
+        """
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.AcqChsSet', body_size=len(channel_indexes)*INT_BYTES)
+        
+        ## Arguments
+        for ch in channel_indexes:
+            hex_rep += self.nanonisTCP.to_hex(ch)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        self.nanonisTCP.receive_response()
+    
     def AcqChshGet(self) -> list[int]:
         
         """
@@ -53,6 +72,8 @@ class Swp1D:
             byte_counter += INT_BYTES
         
         return channel_indexes
+    
+    
     
     
     def Start(self, get_data:bool, sweep_direction:int, save_basename:str, reset_signal:bool):
