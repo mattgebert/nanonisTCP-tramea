@@ -82,10 +82,14 @@ class nanonisTCP:
         if(f64 == 0): return "0000000000000000"                                 # workaround for zero. look into this later
         return hex(struct.unpack('<Q', struct.pack('<d', f64))[0])[2:]          # float64 to hex
     
-    def float32_to_hex(self,f32):
-        # see https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
-        if(f32 == 0): return "00000000"                                         # workaround for zero. look into this later
-        return hex(struct.unpack('<I', struct.pack('<f', f32))[0])[2:]          # float32 to hex
+    def float32_to_hex(self,f32:float):
+        if isinstance(f32, float):
+            return f32.hex()
+        else:
+            return float(f32).hex()
+        # # see https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
+        # if(f32 == 0): return "00000000"                                         # workaround for zero. look into this later
+        # return hex(struct.unpack('<I', struct.pack('<f', f32))[0])[2:]          # float32 to hex
     
     def to_hex(self,conv,num_bytes):
         if(conv >= 0): return hex(conv)[2:].zfill(2*num_bytes)

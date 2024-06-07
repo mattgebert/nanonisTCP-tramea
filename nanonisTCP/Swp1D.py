@@ -146,7 +146,7 @@ class Swp1D:
         """Sets the limits of the 1D Sweeper"""
         
         ## Make Header
-        hex_rep = self.nanonisTCP.make_header('1DSwp.LimitsSet', body_size=2*UINT32)
+        hex_rep = self.nanonisTCP.make_header('1DSwp.LimitsSet', body_size=2*FLOAT32)
         
         ## Arguments
         # Lower limit
