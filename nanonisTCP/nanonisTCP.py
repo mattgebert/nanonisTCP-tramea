@@ -2,20 +2,35 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Mar 29 11:25:57 2022
+Modified on Mon Jun 10, 09:19:00 2024 for asyncio
 
 @author: Julian Ceddia and Jack Hellerstedt
+@author: Matt Gebert
+
 """
 
 import struct
 import socket
-
+import asyncio
+from typing import Self
 
 class nanonisTCP:
     """
-    The base class for all Nanonis TCP communication. 
+    The base class for all Nanonis TCP communication.
     
     This class is used to send and receive messages to and from Nanonis.
+    Built to run with asyncio commands.
     """
+    @classmethod
+    async def create(cls: Self, 
+                     IP:str = '127.0.0.1', 
+                     PORT:int=6501, 
+                     max_buf_size:int = 200, 
+                     version:int = 99999999
+                     ) -> Self:
+        self = cls(IP, PORT, max_buf_size, version)
+        await self.connect()
+        return self
     
     def __init__(self, IP='127.0.0.1', PORT=6501, max_buf_size=200, version=99999999):
         """
@@ -31,8 +46,9 @@ class nanonisTCP:
         self.max_buf_size = max_buf_size
         self.version = version
         
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)              # Set up the connection
-        self.s.connect((IP, PORT))                                              # Open the TCP connection.
+        # self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)              # Set up the connection
+        # self.s.connect((IP, PORT))                                              # Open the TCP connection.
+        self.reader, self.writer = None, None
 
     def make_header(self, command_name, body_size, resp=True):
         """
@@ -70,7 +86,7 @@ class nanonisTCP:
         
     def hex_to_float64(self,h64):
         # see https://forum.inductiveautomation.com/t/ieee-754-standard-converting-64-bit-hex-to-decimal/9324/3
-        return struct.unpack("<d", struct.pack("Q",int("0x"+h64.hex(), 16)))[0]
+        return struct.unpack("<d", struct.pack("<Q",int("0x"+h64.hex(), 16)))[0]
     
     def hex_to_float32(self,h32):
         # see https://forum.inductiveautomation.com/t/ieee-754-standard-converting-64-bit-hex-to-decimal/9324/3
@@ -83,13 +99,13 @@ class nanonisTCP:
         return hex(struct.unpack('<Q', struct.pack('<d', f64))[0])[2:]          # float64 to hex
     
     def float32_to_hex(self,f32:float):
-        if isinstance(f32, float):
-            return f32.hex()
-        else:
-            return float(f32).hex()
-        # # see https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
-        # if(f32 == 0): return "00000000"                                         # workaround for zero. look into this later
-        # return hex(struct.unpack('<I', struct.pack('<f', f32))[0])[2:]          # float32 to hex
+        # if isinstance(f32, float):
+        #     return f32.hex()
+        # else:
+        #     return float(f32).hex()
+        # see https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
+        if(f32 == 0): return "00000000"                                         # workaround for zero. look into this later
+        return hex(struct.unpack('<I', struct.pack('<f', f32))[0])[2:]          # float32 to hex
     
     def to_hex(self,conv,num_bytes):
         if(conv >= 0): return hex(conv)[2:].zfill(2*num_bytes)
@@ -98,14 +114,16 @@ class nanonisTCP:
     def string_to_hex(self,string):
         return string.encode('utf-8').hex()
     
-    def send_command(self, message):
+    async def send_command(self, message):
         """
         Parameters
         message : message to send over TCP to nanonis
         """
-        self.s.send(bytes.fromhex(message))                                     # Convert hex into bytes object
+        self.writer.write(bytes.fromhex(message))
+        await self.writer.drain()
+        # self.s.send(bytes.fromhex(message))                                     # Convert hex into bytes object
         
-    def receive_response(self, error_index=-1, keep_header = False):
+    async def receive_response(self, error_index=-1, keep_header = False):
         """
         Parameters
         error_index : index of 'error status' within the body. -1 skip check
@@ -115,11 +133,13 @@ class nanonisTCP:
         response    : either header + body or body only (keep_header)
         
         """
-        response = self.s.recv(self.max_buf_size)                               # Read the response
+        response = await self.reader.read(self.max_buf_size)
+        # response = self.s.recv(self.max_buf_size)                               # Read the response
         body_size = self.hex_to_int32(response[32:36])
         while(True): 
             if(len(response) == body_size + 40): break                          # body_size + header size (40)
-            response += self.s.recv(self.max_buf_size)
+            # response += self.s.recv(self.max_buf_size)
+            response += await self.reader.read(self.max_buf_size)
         
         if(error_index > -1): self.check_error(response[40:],error_index)       # error_index < 0 skips error check
         
@@ -149,15 +169,18 @@ class nanonisTCP:
             raise Exception(error_description)                                  # raise the exception
         
     
-    def connect(self):
+    async def connect(self):
         """
         Open a once closed connection
         """
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)              # Set up the connection
-        self.s.connect((self.IP, self.PORT))                                    # Open the TCP connection.
+        # self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)              # Set up the connection
+        # self.s.connect((self.IP, self.PORT))                                    # Open the TCP connection.
+        self.reader, self.writer = await asyncio.open_connection(self.IP, self.PORT)
         
-    def close_connection(self):
+    async def close_connection(self):
         """
         Close the TCP connection
         """
-        self.s.close()
+        # self.s.close()
+        self.writer.close()
+        await self.writer.wait_closed()

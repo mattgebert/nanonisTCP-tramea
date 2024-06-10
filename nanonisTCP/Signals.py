@@ -13,7 +13,7 @@ class Signals:
     def __init__(self,NanonisTCP : nanonisTCP):
         self.NanonisTCP = NanonisTCP
     
-    def NamesGet(self) -> list[str]:
+    async def NamesGet(self) -> list[str]:
         """
         Returns the signals names list of the 128 signals available in the 
         software
@@ -28,7 +28,7 @@ class Signals:
         
         self.NanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         # signals_names_size = self.NanonisTCP.hex_to_int32(response[0:4])
         signals_names_num  = self.NanonisTCP.hex_to_int32(response[4:8])
@@ -44,7 +44,7 @@ class Signals:
         
         return signal_names
     
-    def InSlotSet(self,slot,RTSignalIndex) -> None:
+    async def InSlotSet(self,slot,RTSignalIndex) -> None:
         """
         Assigns one of the 128 available signals to one of the 24 slots of the 
         Signals Manager.
@@ -65,11 +65,11 @@ class Signals:
         hex_rep += self.NanonisTCP.to_hex(slot,4)
         hex_rep += self.NanonisTCP.to_hex(RTSignalIndex,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def InSlotsGet(self) -> tuple[list[str], list[int]]:
+    async def InSlotsGet(self) -> tuple[list[str], list[int]]:
         """
         Returns a list of the signals names and indexes of the 24 signals 
         assigned to the slots of the Signals Manager.
@@ -90,9 +90,9 @@ class Signals:
         ## Make Header
         hex_rep = self.NanonisTCP.make_header('Signals.InSlotsGet', body_size=0)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         # signals_names_size = self.NanonisTCP.hex_to_int32(response[0:4])
         signals_names_num  = self.NanonisTCP.hex_to_int32(response[4:8])

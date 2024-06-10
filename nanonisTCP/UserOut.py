@@ -4,12 +4,12 @@ Created on Tue Feb 2 18:49:58 2024
 
 @author: jced0001
 """
-
+from nanonisTCP import nanonisTCP as NTCP
 class UserOut:
     """
     Nanonis User Outputs Module
     """
-    def __init__(self, nanonisTCP):
+    def __init__(self, nanonisTCP: NTCP):
         self.nanonisTCP = nanonisTCP
     
     def ModeSet(self, output_index, output_mode):
@@ -300,3 +300,45 @@ class UserOut:
         upper_limit = self.nanonisTCP.hex_to_float32(response[4:8])
 
         return [lower_limit, upper_limit]
+    
+    def SlewRateSet(self, output_index: int, slew_rate: float):
+        """
+        Sets the slew rate of the selected output channel.
+
+        Parameters
+            Output index (int) : Sets the output to be used, where index could be any value from 1 to the number of available outputs
+            Slew rate (float32) : Sets the slew rate of the selected output in V/s
+        """
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('UserOut.SlewRateSet', body_size=12)
+        
+        ## Arguments
+        hex_rep += self.nanonisTCP.to_hex(output_index,4)
+        hex_rep += self.nanonisTCP.float64_to_hex(slew_rate)
+        self.nanonisTCP.send_command(hex_rep)
+        
+        self.nanonisTCP.receive_response(0)
+        
+    def SlewRateGet(self, output_index) -> float:
+        """
+        Returns the slew rate of the selected output channel.
+        
+        Parameters
+            Output index (int) : Sets the output to be used, where index could be any value from 1 to the number of available outputs.
+            
+        Returns
+            Slew rate (float32) : Returns the slew rate of the selected output in V/s.
+        """
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('UserOut.SlewRateGet', body_size=4)
+
+        ## Arguments
+        hex_rep += self.nanonisTCP.to_hex(output_index,4)
+        
+        self.nanonisTCP.send_command(hex_rep)
+        
+        response = self.nanonisTCP.receive_response()
+        
+        slew_rate = self.nanonisTCP.hex_to_float64(response[0:8]) #8 * 8 = 64 bits
+
+        return slew_rate

@@ -6,6 +6,7 @@ Created on Thurs May 30 3:11PM
 """
 from nanonisTCP import nanonisTCP
 import numpy as np
+import asyncio
 
 UINT32 = 4
 UINT16 = 2
@@ -148,6 +149,14 @@ class Swp1D:
         ## Make Header
         hex_rep = self.nanonisTCP.make_header('1DSwp.LimitsSet', body_size=2*FLOAT32)
         
+        
+        # print(lower_limit)
+        # print(upper_limit)
+        
+        
+        # print(self.nanonisTCP.hex_to_float32(
+        #     bytes.fromhex(self.nanonisTCP.float32_to_hex(upper_limit))
+        #     ))
         ## Arguments
         # Lower limit
         hex_rep += self.nanonisTCP.float32_to_hex(lower_limit)
@@ -230,7 +239,7 @@ class Swp1D:
         
         return (initial_settling_time, maximum_slew_rate, number_of_steps, period, autosave, save_dialog, settling_time)
     
-    def Start(self, get_data:bool, sweep_direction:int, save_basename:str, reset_signal:bool):
+    async def Start(self, get_data:bool, sweep_direction:int, save_basename:str, reset_signal:bool):
         ## Make Header
         hex_rep = self.nanonisTCP.make_header('1DSwp.Start', body_size=3*UINT32 + INT_BYTES + len(save_basename))
         
@@ -268,4 +277,18 @@ class Swp1D:
                 col.append(self.nanonisTCP.hex_to_float32(response[idx : idx + 4]))
                 idx += 4
             data.append(col)
-        return (channel_name_size, channel_names, np.array(data))
+        return (channel_names, np.array(data))
+    
+    async def Stop(self):
+        """Stops the sweep of the 1D Sweeper"""
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.Stop', body_size=0)
+        self.nanonisTCP.send_command(hex_rep)
+        return
+    
+    def Open(self) -> None:
+        """Opens the 1D Sweeper module"""
+        ## Make Header
+        hex_rep = self.nanonisTCP.make_header('1DSwp.Open', body_size=0)
+        self.nanonisTCP.send_command(hex_rep)
+        return
