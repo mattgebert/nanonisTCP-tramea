@@ -12,7 +12,7 @@ class UserOut:
     def __init__(self, nanonisTCP: NTCP):
         self.nanonisTCP = nanonisTCP
     
-    def ModeSet(self, output_index, output_mode):
+    async def ModeSet(self, output_index, output_mode):
         """
         Sets the mode (User Output, Monitor, Calculated signal) of the selected user output channel.
 
@@ -27,11 +27,11 @@ class UserOut:
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         hex_rep += self.nanonisTCP.to_hex(output_mode,2)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
     
-    def ModeGet(self, output_index):
+    async def ModeGet(self, output_index):
         """
         Returns the mode (User Output, Monitor, Calculated signal) of the selected user output channel.
 
@@ -48,14 +48,14 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
         response = self.nanonisTCP.receive_response(2)
         
         output_mode = self.nanonisTCP.hex_to_uint16(response[0:2])
         return output_mode
 
-    def MonitorChSet(self, output_index, monitor_channel_index):
+    async def MonitorChSet(self, output_index, monitor_channel_index):
         """
         Sets the monitor channel of the selected output channel.
 
@@ -72,11 +72,11 @@ class UserOut:
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         hex_rep += self.nanonisTCP.to_hex(monitor_channel_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
         
-    def MonitorChGet(self, output_index):
+    async def MonitorChGet(self, output_index):
         """
         Returns the monitor channel of the selected output channel.
 
@@ -95,14 +95,14 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
         response = self.nanonisTCP.receive_response(4)
         
         monitor_channel_index = self.nanonisTCP.hex_to_int32(response[0:4])
         return monitor_channel_index
     
-    def ValSet(self, output_index, output_value):
+    async def ValSet(self, output_index, output_value):
         """
         Sets the value of the selected user output channel.
 
@@ -117,11 +117,11 @@ class UserOut:
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         hex_rep += self.nanonisTCP.float32_to_hex(output_value)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
         
-    def CalibrSet(self, output_index, calibration, offset):
+    async def CalibrSet(self, output_index, calibration, offset):
         """
         Sets the calibration of the selected user output or monitor channel.
 
@@ -138,11 +138,11 @@ class UserOut:
         hex_rep += self.nanonisTCP.float32_to_hex(calibration)
         hex_rep += self.nanonisTCP.float32_to_hex(offset)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
 
-    def CalcSignalNameSet(self, output_index, calculated_signal_name):
+    async def CalcSignalNameSet(self, output_index, calculated_signal_name):
         """
         Sets the Calculated Signal name of the selected output channel.
 
@@ -162,12 +162,12 @@ class UserOut:
         if(calculated_signal_name_size > 0):
             hex_rep += self.nanonisTCP.string_to_hex(calculated_signal_name)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
 
     
-    def CalcSignalNameGet(self, output_index):
+    async def CalcSignalNameGet(self, output_index):
         """
         Returns the Calculated Signal name of the selected output channel.
 
@@ -184,9 +184,9 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.nanonisTCP.receive_response()
+        response = await self.nanonisTCP.receive_response()
         
         calculated_signal_name = ""
         calculated_signal_name_size = self.nanonisTCP.hex_to_int32(response[0:4])
@@ -195,7 +195,7 @@ class UserOut:
 
         return calculated_signal_name
     
-    def CalcSignalConfigSet(self, output_index, signal_1, operation, signal_2):
+    async def CalcSignalConfigSet(self, output_index, signal_1, operation, signal_2):
         """
         Sets the configuration of the Calculated Signal for the selected output channel
         The configuration is a math operation between 2 signals, or the logarithmic value of one signal.
@@ -217,11 +217,11 @@ class UserOut:
         hex_rep += self.nanonisTCP.to_hex(operation,2)
         hex_rep += self.nanonisTCP.to_hex(signal_2,2)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
         
-    def CalcSignalConfigGet(self, output_index):
+    async def CalcSignalConfigGet(self, output_index):
         """
         Returns the configuration of the Calculated Signal for the selected output channel.
         The configuration is a math operation between 2 signals, or the logarithmic value of one signal.
@@ -243,9 +243,9 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.nanonisTCP.receive_response()
+        response = await self.nanonisTCP.receive_response()
         
         signal_1  = self.nanonisTCP.hex_to_uint16(response[0:2])
         operation = self.nanonisTCP.hex_to_uint16(response[2:4])
@@ -253,7 +253,7 @@ class UserOut:
 
         return [signal_1, operation, signal_2]
     
-    def LimitsSet(self, output_index, upper_limit, lower_limit):
+    async def LimitsSet(self, output_index, upper_limit, lower_limit):
         """
         Sets the physical limits (in calibrated units) of the selected output channel.
 
@@ -270,11 +270,11 @@ class UserOut:
         hex_rep += self.nanonisTCP.float32_to_hex(upper_limit)
         hex_rep += self.nanonisTCP.float32_to_hex(lower_limit)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
         
-    def LimitsGet(self, output_index):
+    async def LimitsGet(self, output_index):
         """
         Returns the physical limits (in calibrated units) of the selected output channel.
 
@@ -292,16 +292,16 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.nanonisTCP.receive_response()
+        response = await self.nanonisTCP.receive_response()
         
         lower_limit = self.nanonisTCP.hex_to_float32(response[0:4])
         upper_limit = self.nanonisTCP.hex_to_float32(response[4:8])
 
         return [lower_limit, upper_limit]
     
-    def SlewRateSet(self, output_index: int, slew_rate: float):
+    async def SlewRateSet(self, output_index: int, slew_rate: float):
         """
         Sets the slew rate of the selected output channel.
 
@@ -315,11 +315,11 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         hex_rep += self.nanonisTCP.float64_to_hex(slew_rate)
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.nanonisTCP.receive_response(0)
+        await self.nanonisTCP.receive_response(0)
         
-    def SlewRateGet(self, output_index) -> float:
+    async def SlewRateGet(self, output_index) -> float:
         """
         Returns the slew rate of the selected output channel.
         
@@ -335,9 +335,9 @@ class UserOut:
         ## Arguments
         hex_rep += self.nanonisTCP.to_hex(output_index,4)
         
-        self.nanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.nanonisTCP.receive_response()
+        response = await self.nanonisTCP.receive_response()
         
         slew_rate = self.nanonisTCP.hex_to_float64(response[0:8]) #8 * 8 = 64 bits
 

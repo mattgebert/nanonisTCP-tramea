@@ -26,7 +26,7 @@ class Signals:
         ## Make Header
         hex_rep = self.NanonisTCP.make_header('Signals.NamesGet', body_size=0)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
         response = await self.NanonisTCP.receive_response()
         
@@ -95,7 +95,7 @@ class Signals:
         response = await self.NanonisTCP.receive_response()
         
         # signals_names_size = self.NanonisTCP.hex_to_int32(response[0:4])
-        signals_names_num  = self.NanonisTCP.hex_to_int32(response[4:8])
+        signals_names_num = self.NanonisTCP.hex_to_int32(response[4:8])
         
         idx = 8
         signal_names = []
@@ -115,7 +115,7 @@ class Signals:
             
         return (signal_names,signal_indexes)
     
-    def CalibrGet(self,signal_index) -> tuple[float, float]:
+    async def CalibrGet(self,signal_index) -> tuple[float, float]:
         """
         Returns the calibration and offset of the selected signal.
 
@@ -135,16 +135,16 @@ class Signals:
         ## Arguments
         hex_rep += self.NanonisTCP.to_hex(signal_index,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response(8)
+        response = await self.NanonisTCP.receive_response(8)
         
         calibration = self.NanonisTCP.hex_to_float32(response[0:4])
         offset      = self.NanonisTCP.hex_to_float32(response[4:8])
         
         return (calibration,offset)
     
-    def RangeGet(self,signal_index) -> tuple[float, float]:
+    async def RangeGet(self,signal_index) -> tuple[float, float]:
         """
         Returns the range limits of the selected signal
 
@@ -164,16 +164,16 @@ class Signals:
         ## Arguments
         hex_rep += self.NanonisTCP.to_hex(signal_index,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response(8)
+        response = await self.NanonisTCP.receive_response(8)
         
         max_limit = self.NanonisTCP.hex_to_float32(response[0:4])
         min_limit = self.NanonisTCP.hex_to_float32(response[4:8])
         
         return (max_limit,min_limit)
     
-    def ValGet(self,signal_index,wait_for_newest_data=True) -> float:
+    async def ValGet(self,signal_index,wait_for_newest_data=True) -> float:
         """
         Returns the current value of the selected signal (oversampled during 
         the Acquisition Period time, Tap).
@@ -219,15 +219,15 @@ class Signals:
         hex_rep += self.NanonisTCP.to_hex(signal_index,4)
         hex_rep += self.NanonisTCP.to_hex(wait_for_newest_data,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response(8)
+        response = await self.NanonisTCP.receive_response(8)
         
         signal_value = self.NanonisTCP.hex_to_float32(response[0:4])
         
         return signal_value
     
-    def MeasNamesGet(self) -> list[str]:
+    async def MeasNamesGet(self) -> list[str]:
         """
         Returns the list of measurement channel names available in the software.
 
@@ -239,9 +239,9 @@ class Signals:
         ## Make Header
         hex_rep = self.NanonisTCP.make_header('Signals.MeasNamesGet', body_size=0)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.NanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         # measurement_names_size = self.NanonisTCP.hex_to_int32(response[0:4])
         measurement_names_num  = self.NanonisTCP.hex_to_int32(response[4:8])
