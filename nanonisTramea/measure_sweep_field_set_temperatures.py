@@ -2,11 +2,13 @@ from automated_scanning import measurement_control, tramea_signals, generate_log
 from nanonisTCP.nanonisTCP import nanonisTCP
 import datetime as dt
 import pytz as tz
+import numpy as np
 import asyncio
+import os
 
 
 aus_timezone = tz.timezone('Australia/Melbourne')
-he3_condensation_max_time = dt.timedelta(days=2, hours=12)
+he3_condensation_max_time = dt.timedelta(days=2, hours=6)
     
 async def main():
     # Connect to the Nanonis controller.
@@ -20,9 +22,9 @@ async def main():
     he3_condensation_time = dt.datetime(
         year=2024,
         month=6,
-        day=10,
-        hour=13,
-        minute=0,
+        day=12,
+        hour=23,
+        minute=30,
         tzinfo=aus_timezone
     )
     
@@ -30,6 +32,16 @@ async def main():
     # Open 1D sweeper
     await control.mod_swp.Open()
     init_params = await control.get_sweep_parameters()
+    # Acquisition channels
+    await control.set_acquisition_channels([
+        tramea_signals.TIME,
+        tramea_signals.DC_INPUT1,
+        tramea_signals.DC_INPUT2,
+        tramea_signals.DC_INPUT3,
+        tramea_signals.DC_INPUT4,
+        tramea_signals.HE3_PROBE_TEMPERATURE,
+        tramea_signals.MAGNETIC_FIELD,
+    ])
     # Field settings
     field_measurement_params = {
         "initial_settling_time" : 300,
@@ -46,15 +58,16 @@ async def main():
     await control.set_sweep_parameters(**field_measurement_params)
     
     # Temperature settings
-    temperatures = generate_log_setpoints(
+    temperatures = np.round(generate_log_setpoints(
         limits=(0.27, 1.4),
         datapoints=20,
         forbidden_range=None
-    )
-    print("Scanning temperatures are set: ", list(temperatures))
+    ), 5)
+    temperatures = temperatures[8:] #MANUAL SUBSAMPLE TODO REMOVE
+    print(dt.datetime.now(), "Scanning temperatures are set: ", list(temperatures))
     
     # Ramp field to initial value:
-    print("Ramping field to initial value...")
+    print(dt.datetime.now(), "Ramping field to initial value...")
     await control.set_parameter_and_stabilise(
             parameter=tramea_signals.MAGNETIC_FIELD_SETPOINT,
             setpoint=field_measurement_limits[0],
@@ -63,27 +76,42 @@ async def main():
         )
     # print("Field stabilised at ", 
         #   await control.get_signal_value(tramea_signals.MAGNETIC_FIELD_SETPOINT))
-    print("Field Stabilised.")
+    print(dt.datetime.now(), "Field Stabilised.")
     
+    measurement_directory = os.path
     for temp in temperatures:
-        name_format = f"Sweep_{temp}K_1V_DC_10MOhmR_100mTpMin"
+        name_format = f"Sweep_{temp:3.3f}K_1V_DC_10MOhmR_100mTpMin"
+        # Check if temperature is already completed
+        docs = os.path.join("", "C:/Users/Nanonis Tramea/Documents")
+        dir = os.path.join(docs, 
+            "Data saving/User/Matt/2024-05-22 TbIG BT #25 Chip#1/2024-06-10 Third Measurement Sweep +- 7T"
+        )
+        if (os.path.exists(os.path.join(dir, name_format + "00001.dat")) and 
+            os.path.exists(os.path.join(dir, name_format + "00002.dat"))):
+            print(dt.datetime.now(), f"Temperature {temp:3.3f} already measured, skipping...")
+            continue
+        
         # Measurement loop!
-        print("Checking if recondensation is required...")
-        if dt.datetime.now(aus_timezone) - he3_condensation_time > he3_condensation_max_time:
+        print(dt.datetime.now(), "Checking if recondensation is required...")
+        if (dt.datetime.now(aus_timezone) 
+            - he3_condensation_time) > he3_condensation_max_time:
+            print(dt.datetime.now(), "Recondensing He3 probe...")
             await control.condense_he3_probe()
             # update the time of the last recondensation
             he3_condensation_time = dt.datetime.now(aus_timezone)
+            print(dt.datetime.now(), "Done")
         else:
-            print("Done!")
+            print(dt.datetime.now(), "Not required!")
         
         # Setup the correct temperature, and wait for stabilisation:
+        print(dt.datetime.now(), "Setting temperature to ", temp, " K..."	)
         await control.set_parameter_and_stabilise(
             parameter=tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT,
             setpoint=temp,
             std=0.005,
             time=120
         )
-        print("Stabilised Temperature")
+        print(dt.datetime.now(), "Stabilised Temperature")
         # print("Stabilised at ", 
             #   await control.get_signal_value(tramea_signals.HE3_PROBE_TEMPERATURE))
         
@@ -94,7 +122,7 @@ async def main():
         await control.set_limits(field_measurement_limits)
         await control.set_sweep_parameters(**field_measurement_params)
         
-        print("Starting field sweep...")
+        print(dt.datetime.now(), "Starting field sweep...")
         # Forward sweep
         await control.start(
             get_data=False,
@@ -102,6 +130,7 @@ async def main():
             save_basename=name_format,
             reset_signal=False
         )
+        print(dt.datetime.now(), "Starting reverse sweep...")
         # Reverse sweep
         await control.start(
             get_data=False,
@@ -109,7 +138,7 @@ async def main():
             save_basename=name_format,
             reset_signal=False
         )
-        print("Field sweep at ", temp, " K complete.")
+        print(dt.datetime.now(), "Field sweep at ", temp, " K complete.")
     
     await NTCP.close_connection()
     

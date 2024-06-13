@@ -786,8 +786,12 @@ class measurement_control:
             time_to_measure=time
         )
         while len(uSig) > 0:
-            val = await self.get_signal_value(param)
-            print(f"Parameter unstable: {val} +- {uStd[param]}. Re-measuring...")
+            # Some meas / sweep signals are not in the signals_sig list.
+            if param.name in self.signals_sig:
+                val = await self.get_signal_value(param)
+                print(f"Parameter unstable: {val} +- {uStd[param]}. Re-measuring...")
+            else:
+                print(f"Parameter unstable: {param} (Variation:{uStd[param]}). Re-measuring...")
             uSig, uStd = await self.check_unstability(
                 signals=[param],
                 standard_deviations=[std],
