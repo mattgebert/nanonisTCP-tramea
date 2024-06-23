@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Feb 2 18:49:58 2024
+Modified on Tue Jun 18 10:00:00 2024
 
 @author: jced0001
+@modified: MattG
 """
 from nanonisTCP import nanonisTCP as NTCP
 class UserOut:

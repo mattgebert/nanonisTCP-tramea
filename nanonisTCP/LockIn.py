@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 Created on Fri Oct 14 20:29:16 2022
+Modified on Tue Jun 18 10:00:00 2024
 
 @author: jced0001
+@modified: MattG
 """
+from nanonisTCP import nanonisTCP as NTCP
 
 class LockIn:
     """
@@ -12,7 +15,7 @@ class LockIn:
     def __init__(self,NanonisTCP):
         self.NanonisTCP = NanonisTCP
     
-    def ModOnOffSet(self,modulator_number,lockin_onoff):
+    async def ModOnOffSet(self,modulator_number,lockin_onoff):
         """
         Turns the specified Lock-In modulator on or off.
 
@@ -30,11 +33,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.to_hex(lockin_onoff,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def ModOnOffGet(self,modulator_number):
+    async def ModOnOffGet(self,modulator_number):
         """
         Returns if the specified Lock-In modulator is turned on or off.
 
@@ -48,15 +51,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         lockin_onoff = self.NanonisTCP.hex_to_uint32(response[0:4])
         
         return lockin_onoff
     
-    def ModSignalSet(self,modulator_number,modulator_signal_index):
+    async def ModSignalSet(self,modulator_number,modulator_signal_index):
         """
         Selects the modulated signal of the specified Lock-In modulator.
 
@@ -76,11 +79,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.to_hex(modulator_signal_index,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
         
-    def ModSignalGet(self,modulator_number):
+    async def ModSignalGet(self,modulator_number):
         """
         Returns the modulated signal of the specified Lock-In modulator.
 
@@ -96,15 +99,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         modulator_signal_index = self.NanonisTCP.hex_to_uint32(response[0:4])
         
         return modulator_signal_index
     
-    def ModPhasRegSet(self,modulator_number,phase_register_index):
+    async def ModPhasRegSet(self,modulator_number,phase_register_index):
         """
         Sets the phase register index of the specified Lock-In modulator.
         Each modulator can work on any phase register (frequency). Use this 
@@ -126,11 +129,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.to_hex(phase_register_index,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def ModPhasRegGet(self,modulator_number):
+    async def ModPhasRegGet(self,modulator_number):
         """
         Returns the phase register index of the specified Lock-In modulator.
         Each modulator can work on any phase register (frequency generator).
@@ -153,15 +156,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         phase_register_index = self.NanonisTCP.hex_to_uint32(response[0:4])
         
         return phase_register_index
     
-    def ModHarmonicSet(self,modulator_number,harmonic):
+    async def ModHarmonicSet(self,modulator_number,harmonic):
         """
         Sets the harmonic of the specified Lock-In modulator.
         The modulator is bound to a phase register (frequency generator), but 
@@ -182,11 +185,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.to_hex(harmonic,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def ModHarmonicGet(self,modulator_number):
+    async def ModHarmonicGet(self,modulator_number):
         """
         Returns the harmonic of the specified Lock-In modulator.
         The modulator is bound to a phase register (frequency generator), but 
@@ -208,15 +211,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         harmonic = self.NanonisTCP.hex_to_uint32(response[0:4])
         
         return harmonic
     
-    def ModPhasSet(self,modulator_number,phase_deg):
+    async def ModPhasSet(self,modulator_number,phase_deg):
         """
         Sets the modulation phase offset of the specified Lock-In modulator.
 
@@ -234,11 +237,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.float32_to_hex(phase_deg)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def ModPhasGet(self,modulator_number):
+    async def ModPhasGet(self,modulator_number):
         """
         Returns the modulation phase offset of the specified Lock-In modulator.
 
@@ -257,15 +260,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         phase_deg = self.NanonisTCP.hex_to_float32(response[0:4])
         
         return phase_deg
     
-    def ModAmpSet(self,modulator_number,amplitude):
+    async def ModAmpSet(self,modulator_number,amplitude):
         """
         Sets the modulation amplitude of the specified Lock-In modulator.
         
@@ -283,11 +286,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.float32_to_hex(amplitude)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def ModAmpGet(self,modulator_number):
+    async def ModAmpGet(self,modulator_number):
         """
         Returns the modulation amplitude of the specified Lock-In modulator.
 
@@ -306,15 +309,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         amplitude = self.NanonisTCP.hex_to_float32(response[0:4])
         
         return amplitude
         
-    def ModPhasFreqSet(self,modulator_number,frequency):
+    async def ModPhasFreqSet(self,modulator_number,frequency):
         """
         Sets the frequency of the specified Lock-In phase register/modulator.
         The Lock-in module has a total of 8 frequency generators / phase 
@@ -336,11 +339,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         hex_rep += self.NanonisTCP.float64_to_hex(frequency)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def ModPhasFreqGet(self,modulator_number):
+    async def ModPhasFreqGet(self,modulator_number):
         """
         Returns the frequency of the specified Lock-In phase register/modulator
         The Lock-in module has a total of 8 frequency generators / phase 
@@ -363,15 +366,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(modulator_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         frequency = self.NanonisTCP.hex_to_float64(response[0:8])
         
         return frequency
     
-    def DemodSignalSet(self,demod_number,demod_signal_index):
+    async def DemodSignalSet(self,demod_number,demod_signal_index):
         """
         Selects the demodulated signal of the specified Lock-In demodulator.
 
@@ -391,11 +394,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         hex_rep += self.NanonisTCP.to_hex(demod_signal_index,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def DemodSignalGet(self,demod_number):
+    async def DemodSignalGet(self,demod_number):
         """
         Returns the demodulated signal of the specified Lock-In demodulator.
 
@@ -416,15 +419,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         demod_signal_index = self.NanonisTCP.hex_to_int32(response[0:4])
         
         return demod_signal_index
         
-    def DemodHarmonicSet(self,demod_number,harmonic):
+    async def DemodHarmonicSet(self,demod_number,harmonic):
         """
         Sets the harmonic of the specified Lock-In demodulator.
         The demodulator demodulates the input signal at the specified harmonic
@@ -445,11 +448,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         hex_rep += self.NanonisTCP.to_hex(harmonic,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def DemodHarmonicGet(self,demod_number):
+    async def DemodHarmonicGet(self,demod_number):
         """
         Returns the harmonic of the specified Lock-In demodulator.
         The demodulator demodulates the input signal at the specified harmonic
@@ -471,15 +474,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         harmonic = self.NanonisTCP.hex_to_int32(response[0:4])
         
         return harmonic
     
-    def DemodHPFilterSet(self,demod_number,hp_filter_order,cutoff):
+    async def DemodHPFilterSet(self,demod_number,hp_filter_order,cutoff):
         """
         Sets the properties of the high-pass filter applied to the demodulated 
         signal of the specified demodulator.
@@ -507,11 +510,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(hp_filter_order,4)
         hex_rep += self.NanonisTCP.float32_to_hex(cutoff)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def DemodHPFilterGet(self,demod_number):
+    async def DemodHPFilterGet(self,demod_number):
         """
         Returns the properties of the high-pass filter applied to the 
         demodulated signal of the specified demodulator.
@@ -538,9 +541,9 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         hp_filter_order = self.NanonisTCP.hex_to_int32(response[0:4])
         cutoff          = self.NanonisTCP.hex_to_float32(response[4:8])
@@ -548,7 +551,7 @@ class LockIn:
         return {"hp_filter_order" : hp_filter_order,
                 "cutoff": cutoff}
     
-    def DemodLPFilterSet(self,demod_number,lp_filter_order,cutoff):
+    async def DemodLPFilterSet(self,demod_number,lp_filter_order,cutoff):
         """
         Sets the properties of the low-pass filter applied to the demodulated
         signal of the specified demodulator.
@@ -577,11 +580,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(lp_filter_order,4)
         hex_rep += self.NanonisTCP.float32_to_hex(cutoff)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def DemodLPFilterGet(self,demod_number):
+    async def DemodLPFilterGet(self,demod_number):
         """
         Returns the properties of the low-pass filter applied to the
         demodulated signal of the specified demodulator.
@@ -608,9 +611,9 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         lp_filter_order = self.NanonisTCP.hex_to_int32(response[0:4])
         cutoff          = self.NanonisTCP.hex_to_float32(response[4:8])
@@ -618,7 +621,7 @@ class LockIn:
         return {"lp_filter_order" : lp_filter_order,
                 "cutoff": cutoff}
     
-    def DemodPhasRegSet(self,demod_number,phase_register_index):
+    async def DemodPhasRegSet(self,demod_number,phase_register_index):
         """
         
 
@@ -637,11 +640,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         hex_rep += self.NanonisTCP.to_hex(phase_register_index,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
         
-    def DemodPhasRegGet(self,demod_number):
+    async def DemodPhasRegGet(self,demod_number):
         """
         Returns the phase register index of the specified Lock-In demodulator.
         Each demodulator can work on any phase register (frequency). Use the 
@@ -664,15 +667,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         phase_register_index = self.NanonisTCP.hex_to_int32(response[0:4])
         
         return phase_register_index
     
-    def DemodPhasSet(self,demod_number,phase_deg):
+    async def DemodPhasSet(self,demod_number,phase_deg):
         """
         Sets the reference phase of the specified Lock-In demodulator.
 
@@ -689,11 +692,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         hex_rep += self.NanonisTCP.float32_to_hex(phase_deg)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def DemodPhasGet(self,demod_number):
+    async def DemodPhasGet(self,demod_number):
         """
         Returns the reference phase of the specified Lock-In demodulator.
 
@@ -711,15 +714,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         phase_deg = self.NanonisTCP.hex_to_float32(response[0:4])
         
         return phase_deg
     
-    def DemodSyncFilterSet(self,demod_number,sync_filter):
+    async def DemodSyncFilterSet(self,demod_number,sync_filter):
         """
         Switches the synchronous (Sync) filter of the specified demodulator 
         On or Off.
@@ -748,11 +751,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         hex_rep += self.NanonisTCP.to_hex(sync_filter,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
     
-    def DemodSyncFilterGet(self,demod_number):
+    async def DemodSyncFilterGet(self,demod_number):
         """
         Returns the status (on/off) of the synchronous (Sync) filter of the
         specified demodulator.
@@ -782,15 +785,15 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         sync_filter = self.NanonisTCP.hex_to_uint32(response[0:4])
         
         return sync_filter
     
-    def DemodRTSignalsSet(self,demod_number,rt_signals):
+    async def DemodRTSignalsSet(self,demod_number,rt_signals):
         """
         Sets the signals available for acquisition on the real-time system from 
         the specified demodulator
@@ -812,11 +815,11 @@ class LockIn:
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         hex_rep += self.NanonisTCP.to_hex(rt_signals,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        self.NanonisTCP.receive_response(0)
+        await self.NanonisTCP.receive_response(0)
         
-    def DemodRTSignalsGet(self,demod_number):
+    async def DemodRTSignalsGet(self,demod_number):
         """
         Returns which the signals are available for acquisition on the 
         real-time system from the specified demodulator.
@@ -838,9 +841,9 @@ class LockIn:
         
         hex_rep += self.NanonisTCP.to_hex(demod_number,4)
         
-        self.NanonisTCP.send_command(hex_rep)
+        await self.nanonisTCP.send_command(hex_rep)
         
-        response = self.NanonisTCP.receive_response()
+        response = await self.NanonisTCP.receive_response()
         
         rt_signals = self.NanonisTCP.hex_to_uint32(response[0:4])
         

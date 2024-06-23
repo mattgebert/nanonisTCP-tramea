@@ -5,8 +5,13 @@ class OxfordNanonisSignalNames(Enum):
     TIME = "Timestamp (ms)"
     MAGNETIC_FIELD = "Magnetic Field (T)"
     MAGNETIC_FIELD_SETPOINT = "Magnetic Field Setp. (T)"
+    # He3 Probe Signal Names
     HE3_PROBE_TEMPERATURE = "Sample Space (K)"
     HE3_PROBE_TEMPERATURE_SETPOINT = "Sample Space Setp. (K)"
+    # He4 Probe Default Signal Names
+    HE4_VTI_TEMPERATURE = "He4 Sample Space (K)"
+    HE4_VTI_TEMPERATURE_SETPOINT = "He4 Sample Space Setp. (K)"
+    HE4_EXTRA_TEMP_SENSOR = "Sample Temperature (K)"
     # DC Inputs
     DC_INPUT1 = "Input 1 (V)"
     DC_INPUT2 = "Input 2 (V)"

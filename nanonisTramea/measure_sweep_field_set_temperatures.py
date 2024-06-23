@@ -22,18 +22,18 @@ async def main():
     he3_condensation_time = dt.datetime(
         year=2024,
         month=6,
-        day=12,
-        hour=23,
-        minute=30,
+        day=18,
+        hour=10,
+        minute=00,
         tzinfo=aus_timezone
     )
     
     ## Setup the measurement parameters.
     # Open 1D sweeper
     await control.mod_swp.Open()
-    init_params = await control.get_sweep_parameters()
+    init_params = await control.swp_get_parameters()
     # Acquisition channels
-    await control.set_acquisition_channels([
+    await control.swp_set_acquisition_channels([
         tramea_signals.TIME,
         tramea_signals.DC_INPUT1,
         tramea_signals.DC_INPUT2,
@@ -53,9 +53,9 @@ async def main():
         "settling_time" : init_params[6]
     }
     field_measurement_limits = (-7, 7)
-    await control.set_sweep_signal(tramea_signals.MAGNETIC_FIELD_SETPOINT)
-    await control.set_limits(field_measurement_limits)
-    await control.set_sweep_parameters(**field_measurement_params)
+    await control.swp_set_sweep_signal(tramea_signals.MAGNETIC_FIELD_SETPOINT)
+    await control.swp_set_limits(field_measurement_limits)
+    await control.swp_set_parameters(**field_measurement_params)
     
     # Temperature settings
     temperatures = np.round(generate_log_setpoints(
@@ -78,7 +78,6 @@ async def main():
         #   await control.get_signal_value(tramea_signals.MAGNETIC_FIELD_SETPOINT))
     print(dt.datetime.now(), "Field Stabilised.")
     
-    measurement_directory = os.path
     for temp in temperatures:
         name_format = f"Sweep_{temp:3.3f}K_1V_DC_10MOhmR_100mTpMin"
         # Check if temperature is already completed
@@ -89,7 +88,7 @@ async def main():
         if (os.path.exists(os.path.join(dir, name_format + "00001.dat")) and 
             os.path.exists(os.path.join(dir, name_format + "00002.dat"))):
             print(dt.datetime.now(), f"Temperature {temp:3.3f} already measured, skipping...")
-            continue
+            continue # skip to next for loop entry.
         
         # Measurement loop!
         print(dt.datetime.now(), "Checking if recondensation is required...")
@@ -118,13 +117,13 @@ async def main():
         # Run the field sweep measurements, forward and backward.
         # These commmands shouldn't be neccessary (as set_parameter_and_stabilise 
         # should reset the signal and parameters for the field)
-        await control.set_sweep_signal(tramea_signals.MAGNETIC_FIELD_SETPOINT)
-        await control.set_limits(field_measurement_limits)
-        await control.set_sweep_parameters(**field_measurement_params)
+        await control.swp_set_sweep_signal(tramea_signals.MAGNETIC_FIELD_SETPOINT)
+        await control.swp_set_limits(field_measurement_limits)
+        await control.swp_set_parameters(**field_measurement_params)
         
         print(dt.datetime.now(), "Starting field sweep...")
         # Forward sweep
-        await control.start(
+        await control.swp_ramp_start(
             get_data=False,
             sweep_direction=1,
             save_basename=name_format,
@@ -132,7 +131,7 @@ async def main():
         )
         print(dt.datetime.now(), "Starting reverse sweep...")
         # Reverse sweep
-        await control.start(
+        await control.swp_ramp_start(
             get_data=False,
             sweep_direction=0,
             save_basename=name_format,

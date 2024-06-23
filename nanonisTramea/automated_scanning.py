@@ -4,6 +4,8 @@ from nanonisTCP import nanonisTCP
 from nanonisTCP.Signals import Signals
 from nanonisTCP.Swp1D import Swp1D
 from nanonisTCP.UserOut import UserOut
+from nanonisTCP.LockIn import LockIn
+import warnings
 import pandas as pd
 import datetime as dt
 import numpy as np
@@ -11,6 +13,36 @@ import time
 import numpy.typing as npt
 import asyncio
 from typing import Self
+
+# Create dictionaries to convert between custom sensor and setpoint signals.
+SENSOR_TO_SETPOINTS = {
+    tramea_signals.HE3_PROBE_TEMPERATURE : tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT,
+    tramea_signals.MAGNETIC_FIELD : tramea_signals.MAGNETIC_FIELD_SETPOINT,
+    tramea_signals.HE4_VTI_TEMPERATURE: tramea_signals.HE4_VTI_TEMPERATURE_SETPOINT
+}
+SETPOINTS_TO_SENSORS = {
+    val: key
+    for key, val in SENSOR_TO_SETPOINTS.items()
+}
+
+#Pre-defined limits for various signal ranges
+_LIMITS = {
+    tramea_signals.MAGNETIC_FIELD_SETPOINT:(-14,14),
+    tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT:(0, 300),
+    tramea_signals.HE4_VTI_TEMPERATURE_SETPOINT:(0, 300),
+    tramea_signals.DC_OUTPUT1:(-10, 10),
+    tramea_signals.DC_OUTPUT2:(-10, 10),
+    tramea_signals.DC_OUTPUT3:(-10, 10),
+    tramea_signals.DC_OUTPUT4:(-10, 10),
+    tramea_signals.DC_OUTPUT5:(-10, 10),
+    tramea_signals.DC_OUTPUT6:(-10, 10),
+    tramea_signals.DC_OUTPUT7:(-10, 10),
+    tramea_signals.DC_OUTPUT8:(-10, 10),
+    tramea_signals.AC_OUTPUT1_AMP:(0, 5),
+    tramea_signals.AC_OUTPUT2_AMP:(0, 5),
+    tramea_signals.AC_OUTPUT3_AMP:(0, 5),
+    tramea_signals.AC_OUTPUT4_AMP:(0, 5),
+}
 
 class measurement_control:
     """
@@ -26,9 +58,11 @@ class measurement_control:
         self._mod_sig = None
         self._mod_swp = None
         self._mod_out = None
+        self._mod_lock = None
         self._signals_meas = None
         self._signals_sweep = None
         self._signals_sig = None
+        self._async_timeout_params = None
     
     @classmethod
     async def create(cls, NTCP: nanonisTCP) -> Self:
@@ -43,9 +77,11 @@ class measurement_control:
         sig = Signals(self.nanonisTCP)
         swp = Swp1D(self.nanonisTCP)
         out = UserOut(self.nanonisTCP)
+        lock = LockIn(self.nanonisTCP)
         self._mod_sig = sig
         self._mod_swp = swp
         self._mod_out = out
+        self._mod_lock = lock
         
         # Collect the names of the signals used by the signal module.
         sig_signals = await sig.NamesGet()
@@ -64,6 +100,8 @@ class measurement_control:
         # Collect the names of the sweep signals:
         self.current_sweeper, self._signals_sweep = await swp.SwpSignalGet()
         print("Sweepers:\t", self.signals_sweep, "\n")
+        if self.current_sweeper == "":
+            await swp.SwpSignalSet(self.signals_sweep[0])
         return self
         
     @property 
@@ -83,14 +121,24 @@ class measurement_control:
     @property
     def mod_out(self) -> UserOut:
         """
-        Returns the UserOutput module (DC/AC Tramea outputs).
+        Returns the UserOutput module (DC Tramea outputs).
         """
         return self._mod_out
+    
+    @property
+    def mod_lock(self) -> LockIn:
+        """
+        Returns the LockIn module (AC Tramea outputs).
+        """
+        return self._mod_lock
     
     @property
     def signals_meas(self) -> dict[str, int]:
         """
         Returns the measurement signals.
+        
+        Measurement signals are signals that can be measured through other routines,
+        such as Swp1D.
         """
         return self._signals_meas
     
@@ -98,18 +146,43 @@ class measurement_control:
     def signals_sweep(self) -> list[str]:
         """
         Returns the sweep signals.
+        
+        Sweep signals are signals that can be used to sweep a parameter.
         """
         return self._signals_sweep
     
     @property
     def signals_sig(self) -> dict[str, int]:
         """
-        Returns the signals.
+        Returns the full set of data signals.
+        
+        Each signal has a unique index that can be used to directly measure the signal.
+        These signals are used to directly measure sensor data. They are not always 
+        present in the measurement channels, but most are.
         """
         return self._signals_sig
     
         
     async def measurement_index(self, channel_name: str | OxfordNanonisSignalNames) -> int:
+        """
+        Returns the list index of a measurement channel name, if it exists,
+        used for 1DSwp module. 
+        
+        Parameters
+        ----------
+        channel_name : str | OxfordNanonisSignalNames
+            The channel name to find the index of.
+            
+        Returns
+        -------
+        int
+            The index of the channel name in the measurement channels list.
+        
+        Raises
+        ------
+        ValueError
+            If the channel name is not defined in the measurement channels list.
+        """
         if isinstance(channel_name, OxfordNanonisSignalNames):
             channel_name = channel_name.value
         if channel_name in self.signals_meas:
@@ -117,7 +190,7 @@ class measurement_control:
         else:
             raise ValueError(f"Channel {channel_name} is not defined in the measurement channels list.")
         
-    async def get_sweep_signal(self) -> str | OxfordNanonisSignalNames:
+    async def swp_get_sweep_signal(self) -> str | OxfordNanonisSignalNames:
         name, names = await self.mod_swp.SwpSignalGet()
         if name in OxfordNanonisSignalNames._value2member_map_:
             self.current_sweeper = OxfordNanonisSignalNames(name)
@@ -125,7 +198,7 @@ class measurement_control:
             self.current_sweeper = name
         return self.current_sweeper
         
-    async def set_sweep_signal(self, signal_name: str | OxfordNanonisSignalNames):
+    async def swp_set_sweep_signal(self, signal_name: str | OxfordNanonisSignalNames):
         """
         Sets the sweep signal of the 1D Sweeper module (1DSwp.SwpSignalSet).
         """
@@ -137,7 +210,7 @@ class measurement_control:
             await self.mod_swp.SwpSignalSet(signal_name)  
         time.sleep(1) #add a delay before limits can be changed...  
         
-    async def get_acquisition_channels(self) -> list[str | OxfordNanonisSignalNames]:
+    async def swp_get_acquisition_channels(self) -> list[str | OxfordNanonisSignalNames]:
         """
         Returns the list of acquisition channels.
         """
@@ -150,7 +223,9 @@ class measurement_control:
         ]
         return channels
         
-    async def set_acquisition_channels(self, channels: list[OxfordNanonisSignalNames | int | str]):
+    async def swp_set_acquisition_channels(self, 
+                                       channels: list[OxfordNanonisSignalNames | int | str]
+                                       ):
         """
         Sets the acquisition channels of the 1D Sweeper module (1DSwp.AcqChsSet).
         
@@ -174,7 +249,7 @@ class measurement_control:
         await self.mod_swp.AcqChsSet(channel_indexes)
         return
         
-    async def get_sweep_parameters(self) -> tuple[float, float, int, int, bool, bool, float]:
+    async def swp_get_parameters(self) -> tuple[float, float, int, int, bool, bool, float]:
         """
         Returns the sweep parameters of the 1D Sweeper module (1DSwp.SwpParamsGet).
         
@@ -197,9 +272,8 @@ class measurement_control:
                 Settling time in milliseconds.
         """
         return await self.mod_swp.PropsGet()
-
         
-    async def set_sweep_parameters(self, 
+    async def swp_set_parameters(self, 
                              initial_settling_time: float,
                              maximum_slew_rate: float,
                              number_of_steps: int,
@@ -237,7 +311,18 @@ class measurement_control:
             settling_time=settling_time
         )
     
-    async def _check_limits(self, limits: tuple[float, float], hard_limits: tuple[float, float]) -> bool:
+    @staticmethod
+    def _limits(signal_name: str | OxfordNanonisSignalNames) -> tuple[float, float]:
+        """Pre-defined limits for various signal ranges"""
+        if isinstance(signal_name, str):
+            signal_name = OxfordNanonisSignalNames(signal_name)
+        if signal_name in _LIMITS:
+            return _LIMITS[signal_name]
+        else:
+            raise ValueError(f"Signal {signal_name} not defined in limits.")
+    
+    @staticmethod
+    def _check_limits(limits: tuple[float, float], hard_limits: tuple[float, float]) -> bool:
         """
         Check if the limits are within the hard limits.
         
@@ -260,7 +345,7 @@ class measurement_control:
         else:
             return True
     
-    async def set_limits(self, limits: tuple[float, float]) -> None:
+    async def swp_set_limits(self, limits: tuple[float, float]) -> None:
         """
         Sets the limits of the 1D Sweeper module (1DSwp.LimitsSet).
         
@@ -269,34 +354,31 @@ class measurement_control:
         limits : tuple[float, float]
             The sweeper signal limits, lower then upper.
         """
+        hard_limits = self._limits(self.current_sweeper)
         if self.current_sweeper is tramea_signals.MAGNETIC_FIELD_SETPOINT:
-            hard_limits = (-14,14)
-            if not await self._check_limits(limits, hard_limits):
+            if not self._check_limits(limits, hard_limits):
                 raise ValueError(f"Field limits must be within {hard_limits}, and limits[0] < limits[1].")
         elif self.current_sweeper is tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT:
-            hard_limits = (0, 300)
-            if not await self._check_limits(limits, hard_limits):
+            if not self._check_limits(limits, hard_limits):
                 raise ValueError(f"Temperature limits must be within {hard_limits}, and limits[0] < limits[1].")
         elif (self.current_sweeper is tramea_signals.DC_INPUT1
               or self.current_sweeper is tramea_signals.DC_INPUT2
               or self.current_sweeper is tramea_signals.DC_INPUT3
               or self.current_sweeper is tramea_signals.DC_INPUT4
               ):
-            hard_limits = (-10, 10)
-            if not await self._check_limits(limits, hard_limits):
+            if not self._check_limits(limits, hard_limits):
                 raise ValueError(f"DC Voltage limits must be within {hard_limits}, and limits[0] < limits[1].")
         elif (self.current_sweeper is tramea_signals.AC_OUTPUT1_AMP
               or self.current_sweeper is tramea_signals.AC_OUTPUT2_AMP
               or self.current_sweeper is tramea_signals.AC_OUTPUT3_AMP
               or self.current_sweeper is tramea_signals.AC_OUTPUT4_AMP  
               ):
-            hard_limits = (0, 2)
-            if not await self._check_limits(limits, hard_limits):
+            if not self._check_limits(limits, hard_limits):
                 raise ValueError(f"AC Voltage limits must be within {hard_limits}, and limits[0] < limits[1].")
         await self.mod_swp.LimitsSet(*limits)
         return
     
-    async def get_limits(self) -> tuple[float, float]:
+    async def swp_get_limits(self) -> tuple[float, float]:
         """
         Returns the limits of the 1D Sweeper module (1DSwp.LimitsGet).
         
@@ -307,9 +389,18 @@ class measurement_control:
         """
         return await self.mod_swp.LimitsGet()
     
-    async def start(self, get_data: bool = True, sweep_direction: int = 1, save_basename: str = "test_TCP_data", reset_signal: bool = False) -> tuple[list[str], pd.DataFrame]:
+    async def swp_ramp_start(self, get_data: bool = True, 
+                             sweep_direction: int = 1, 
+                             save_basename: str = "test_TCP_data", 
+                             reset_signal: bool = False,
+                             sweep_timeout:float = None) -> tuple[list[str], pd.DataFrame]:
         """
         Starts the 1D Sweeper module (1DSwp.Start).
+        
+        Additionally calls the stop function, restoring sweep signal and parameters
+        from `_async_timeout_params` attribute to original values.
+        Can accomodate a timeout to stop the sweep if it takes too long, or 
+        if the ramp is being used to define a setpoint.
         
         Parameters
         ----------
@@ -320,7 +411,11 @@ class measurement_control:
         save_basename : str
             Save basename.
         reset_signal : bool
-            Reset signal.
+            Reset to initial value?
+        sweep_timeout : float
+            Timeout in seconds. Minimum time will be 2 seconds to ensure 
+            the stop function can be called after sweep initialisation.
+            By default None, implying no timeout.
         
         Returns
         -------
@@ -335,16 +430,79 @@ class measurement_control:
         if sweep_direction not in [0, 1]:
             raise ValueError("Sweep direction must be forward (1) or reverse (0).")
         
-        return await self.mod_swp.Start(
-            get_data=get_data,
-            sweep_direction=sweep_direction,
-            save_basename=save_basename,
-            reset_signal=reset_signal
-        )
+        if sweep_timeout is not None:
+            print("Timeout: ", sweep_timeout)
+            sweep_timeout = max(sweep_timeout, 2)
+            try:
+                sweep = await asyncio.wait_for(
+                    fut=self.mod_swp.Start(
+                        get_data=False,
+                        sweep_direction=sweep_direction,
+                        save_basename=save_basename,
+                        reset_signal=False
+                    ), 
+                    timeout=sweep_timeout
+                )
+                # Use stop to restore the signal and parameters if they were changed.
+                await self.swp_ramp_stop()
+                return sweep
+            except asyncio.TimeoutError:
+                print("Timeout reached, stopping sweep ramp.")
+                await self.swp_ramp_stop()
+                return None
+        else:
+            sweep = await self.mod_swp.Start(
+                get_data=get_data,
+                sweep_direction=sweep_direction,
+                save_basename=save_basename,
+                reset_signal=reset_signal
+            )
+            # Use to restore the signal and parameters if they were changed.
+            await self.restore_sweep_vars()
+            return sweep
         
-    async def set_slew_rate(self, output_index: int, slew_rate: float) -> None:
+    async def swp_ramp_stop(self,
+                            timeout=5.0) -> None:
+        """ 
+        Stops the async 1DSwp ramp. 
+        
+        Parameters
+        ----------
+        timeout : float
+            Timeout in seconds, before trying again.
         """
-        Sets the slew rate of the 1D Sweeper module (1DSwp.SlewRateSet).
+        print("A")
+        exec = False
+        timeouts = 0
+        while not exec:
+            try:
+                print("B")
+                await asyncio.wait_for(self.mod_swp.Stop(), timeout)
+                exec = True
+            except asyncio.TimeoutError:
+                print("C")
+                timeout+=1
+                if timeouts > 10:
+                    raise TimeoutError(f"Attempted to stop ramp {timeouts} times. Aborting.")
+                pass
+        # Reset the signal to the original signal if it was changed.
+        await self.restore_sweep_vars()
+        
+    async def restore_sweep_vars(self) -> None:
+        """
+        Restores the sweep signal and parameters from `_async_timeout_params`.
+        """
+        if self._async_timeout_params:
+            sweep, params, lims = self._async_timeout_params
+            await self.swp_set_sweep_signal(sweep)
+            await self.swp_set_parameters(*params)
+            await self.swp_set_limits(lims)
+            self._async_timeout_params = None
+        return
+        
+    async def out_set_slew_rate(self, output_index: int, slew_rate: float) -> None:
+        """
+        Sets the slew rate of the output module (UserOut.SlewRateSet).
         
         Parameters
         ----------
@@ -355,9 +513,9 @@ class measurement_control:
         """
         return await self.mod_out.SlewRateSet(output_index, slew_rate)
     
-    async def get_slew_rate(self, output_index: int) -> float:
+    async def out_get_slew_rate(self, output_index: int) -> float:
         """
-        Returns the slew rate of the 1D Sweeper module (1DSwp.SlewRateGet).
+        Returns the slew rate of the output module (UserOut.SlewRateGet).
         
         Parameters
         ----------
@@ -371,34 +529,121 @@ class measurement_control:
         """
         return await self.mod_out.SlewRateGet(output_index)
     
-    async def get_signal_value(self, signal_name: str | OxfordNanonisSignalNames) -> float:
+    async def out_time_measure_sigs(self,
+                    output_idx: int | OxfordNanonisSignalNames,
+                    output_setpoints: list[float],
+                    meas_sigs: list[str | OxfordNanonisSignalNames],
+                    meas_to_average: int = 1,
+                    meas_period: float = 1
+                    ) -> tuple[npt.NDArray, npt.NDArray]:
         """
-        Returns the value of a signal.
+        Changes UserOutput and measures Signals data over time.
+        
+        Uses the output module to change the control signal to the setpoints, and measure
+        the data from the measurement signals. 
         
         Parameters
         ----------
-        signal_name : str | OxfordNanonisSignalNames
-            The signal name.
-            
+        output_idx : int
+            DC output index to change the value of.
+        output_setpoints : list[float]
+            List of control setpoints for output_idx.
+        meas_sigs : list[str | OxfordNanonisSignalNames]
+            List of signals to measure. Not measurement listed signals, rather 
+            the signals module (128) available signals.
+        meas_to_average : int
+            Number of measurements to average per period.
+        meas_period : float
+            Time between measurements in seconds.
+        
         Returns
         -------
-        value : float
-            The value of the signal.
+        vals_mean : npt.NDArray
+            Mean values of the setpoint + measurement signals.
+        vals_std : npt.NDArray
+            Standard devations of the setpoint + measurement signals.
         """
-        if isinstance(signal_name, OxfordNanonisSignalNames):
-            signal_name = signal_name.value
-        if signal_name not in self.signals_sig:
-            raise ValueError(f"Signal {signal_name} is not defined in the available signals list.")
-        return await self.mod_sig.ValGet(self.signals_sig[signal_name])
-    
-    async def time_measure(self, 
+        # Get the output signal name.
+        if isinstance(output_idx, int):
+            output_name = "Output " + str(output_idx) + " (V)"
+        elif isinstance(output_idx, OxfordNanonisSignalNames):
+            if "Output" in output_idx.value and " (V)" in output_idx.value:
+                output_name = output_idx.value
+                output_idx = int(output_idx.value.replace("Output ", "").replace(" (V)", ""))
+            else:
+                raise ValueError(f"{output_idx} does not match the expected pattern ('Output <integer> (V)') of an output channel name.")
+        else:
+            raise ValueError("Output index must be an output channel integer or an equivalent OxfordNanonisSignalNames.")
+        if output_name not in self.signals_sig:
+            raise ValueError(f"Output {output_idx} is not a valid output channel index.")
+        output_sig_idx = self.signals_sig[output_name]
+        # Get the signal range
+        lims = await self.mod_out.LimitsGet(output_idx) # upper then lower...
+        if np.any(output_setpoints < lims[1]) or np.any(output_setpoints > lims[0]):
+            raise ValueError(f"Setpoints '{output_setpoints}' must be within the range {lims}.")
+        
+        # Get initial value to reset to.
+        default_val = await self.mod_sig.ValGet(self.signals_sig[output_name])
+        
+        # Set first setpoint.
+        await self.mod_out.ValSet(output_idx, output_setpoints[0])
+        
+        # Collect the measurement signal indexes.
+        meas_idxs = []
+        for signal in meas_sigs:
+            if isinstance(signal, OxfordNanonisSignalNames):
+                signal = signal.value
+            if signal not in self.signals_sig:
+                raise ValueError(f"Signal {signal} is not defined in the available signals list.")
+            meas_idxs.append(self.signals_sig[signal])
+        
+        # Collect the data in a timing loop.
+        data_ave = []
+        data_std = []
+        for setpoint in output_setpoints:
+            # Set setpoint.
+            await self.mod_out.ValSet(output_idx, setpoint)
+            # Wait for measurement to stabilise
+            await asyncio.sleep(meas_period)
+            # Check stabilisation
+            setpoint_measure = await self.mod_sig.ValGet(output_sig_idx)
+            while setpoint_measure - setpoint > 0.05*setpoint:
+                print(f"Waiting for output {setpoint_measure} to stabilise to setpoint {setpoint}.")
+                await asyncio.sleep(meas_period)
+                setpoint_measure = await self.mod_sig.ValGet(output_sig_idx)
+                
+            # Measure values
+            vals = []
+            for i in range(meas_to_average):
+                # Compile and store a list of vals
+                vals.append([await self.mod_sig.ValGet(output_sig_idx)] + [
+                    await self.mod_sig.ValGet(idx)
+                    for idx in meas_idxs
+                ])
+                # If repeating measurements, wait for measurement period.
+                if i != meas_to_average - 1:
+                    await asyncio.sleep(meas_period)
+            # Average the values to a single value
+            data_ave.append(np.mean(vals, axis=0))
+            data_std.append(np.std(vals, axis=0))
+        # Pack into np array.
+        data_ave = np.array(data_ave)
+        data_std = np.array(data_std)
+        
+        # Reset the voltage value to the default value.
+        await self.mod_out.ValSet(output_idx, default_val)
+        
+        return data_ave, data_std
+                        
+    async def swp_time_measure(self, 
                      output_index: int, 
                      measure_time: int, 
                      measure_channels: list[str | OxfordNanonisSignalNames],
-                     default_output_lims: tuple[float, float] = (-0.001, 0.001)
+                     default_output_lims: tuple[float, float] = (-0.001, 0.001),
+                     measure_period: int = 300
                      ) -> dict[str | OxfordNanonisSignalNames, npt.NDArray]:
         """
-        Measures some data overtime without changing a critical signal, does not save data to file.
+        Uses Measures some data overtime without changing a critical signal, does not save data to file.
         
         Output index should be an unconnected analog output channel,
         and slew rate will be adjusted to measure over right time.
@@ -408,11 +653,13 @@ class measurement_control:
         output_index : int
             Output index.
         time : int
-            Time in seconds.
+            Time to measure in seconds.
         measure_channels : list[str | OxfordNanonisSignalNames]
             List of channels to measure data.
         default_output_lims : tuple[float, float]
             Channel output voltage limits, by default (-0.001, 0.001) volts.
+        measure_period: int
+            Time between measurements in milliseconds. By default 300 ms.
             
         Returns
         -------
@@ -426,31 +673,31 @@ class measurement_control:
         
         slew_rate = (default_output_lims[1] - default_output_lims[0]) / measure_time
         # Store the current settings
-        current_settings = await self.get_sweep_parameters()
-        current_sweep = await self.get_sweep_signal()
-        current_lims = await self.get_limits()
-        current_slew = await self.get_slew_rate(output_index)
-        current_channels = await self.get_acquisition_channels()
+        current_settings = await self.swp_get_parameters()
+        current_sweep = await self.swp_get_sweep_signal()
+        current_lims = await self.swp_get_limits()
+        current_slew = await self.out_get_slew_rate(output_index)
+        current_channels = await self.swp_get_acquisition_channels()
         # Setup time measure settings
-        await self.set_sweep_signal(channel_str)
-        assert await self.get_sweep_signal() == channel_str, "Sweep signal not set correctly."
-        await self.set_limits(default_output_lims)
-        await self.set_sweep_parameters(
+        await self.swp_set_sweep_signal(channel_str)
+        assert await self.swp_get_sweep_signal() == channel_str, "Sweep signal not set correctly."
+        await self.swp_set_limits(default_output_lims)
+        await self.swp_set_parameters(
             initial_settling_time=300,
             maximum_slew_rate=slew_rate,
             number_of_steps=current_settings[2],
-            period=1000,
+            period=measure_period,
             autosave=False,
             save_dialog=False,
             settling_time=current_settings[6]
         )
-        await self.set_acquisition_channels(measure_channels)
+        await self.swp_set_acquisition_channels(measure_channels)
         # Set starting value of the DC sweeper
         # Use a fast rate to initialise
-        await self.set_slew_rate(output_index, 10.0) #default voltage / s for Tramea.
+        await self.out_set_slew_rate(output_index, 10.0) #default voltage / s for Tramea.
         await self.mod_out.ValSet(output_index, default_output_lims[0])
+        await self.out_set_slew_rate(output_index, slew_rate)
         time.sleep(1)
-        await self.set_slew_rate(output_index, slew_rate)
         # Wait for value to reach start value: TODO: cannot check output value...
         threshold = 0.05 * abs(default_output_lims[1]-default_output_lims[0])
         channel_value_delta = abs(await self.mod_sig.ValGet(channel_signal_index) - default_output_lims[0])
@@ -462,19 +709,19 @@ class measurement_control:
                  val - default_output_lims[0]
             )
         # Measure the data:
-        channel_names, data = await self.start(
+        channel_names, data = await self.swp_ramp_start(
             get_data=True,
             sweep_direction=1,
             save_basename="time_measure_stability",
             reset_signal=False
         )
         # Restore initial settings
-        await self.set_slew_rate(output_index, current_slew)
-        await self.set_sweep_signal(current_sweep)
-        await self.set_limits(current_lims)
-        await self.set_sweep_parameters(*current_settings)
+        await self.out_set_slew_rate(output_index, current_slew)
+        await self.swp_set_sweep_signal(current_sweep)
+        await self.swp_set_limits(current_lims)
+        await self.swp_set_parameters(*current_settings)
         if current_channels is not None:
-            await self.set_acquisition_channels(current_channels)
+            await self.swp_set_acquisition_channels(current_channels)
         # Return values
         channel_names = [OxfordNanonisSignalNames(channel) 
                          for channel in channel_names
@@ -484,14 +731,16 @@ class measurement_control:
                    for i, channel in enumerate(channel_names)}
         return keyedData
     
-    async def check_unstability(self, 
+    async def swp_check_unstability(self, 
                             signals: list[str | OxfordNanonisSignalNames],
                             standard_deviations: list[float],
                             setpoints: list[float] = None,
                             time_to_measure: int = 60*10,
                             output_index: int = 8,
                             default_output_lims: tuple[float, float] = (-0.001, 0.001)
-                            ):
+                            ) -> tuple[list[str | OxfordNanonisSignalNames],
+                                       dict[str | OxfordNanonisSignalNames, npt.NDArray],
+                                       dict[str | OxfordNanonisSignalNames, npt.NDArray]]:
         """
         Returns signals that are unstable within a certain timeframe.
         
@@ -512,28 +761,30 @@ class measurement_control:
             Nanonis Tramea DC output index to use for time measurement.
         default_output_lims : tuple[float, float]
             Default output voltage limits for the time measurement.
+            By default (-0.001, 0.001) volts.
             
         Returns
         -------
         unstable_signals : list[str | OxfordNanonisSignalNames]
             List of unstable signals. If length > 0 then some signals are unstable.
+        aves : dict[str | OxfordNanonisSignalNames, float]
+            Dictionary of mean values measured.
         stds : dict[str | OxfordNanonisSignalNames, float]
             Dictionary of standard deviations for each signal. 
             If setpoints are provided, an unstable signal might not 
             be outside the provided standard deviation.
         """
-        #TODO: Replace this function with a direct signal getVal measurement,
-        # Unless the user likes a UI for this.
         assert len(signals) == len(standard_deviations), "Signals and standard deviations must be the same length."
         assert setpoints is None or len(signals) == len(setpoints), "Signals and setpoints must be the same length."
         
-        data = await self.time_measure(
+        data = await self.swp_time_measure(
             output_index=output_index,
             measure_time=time_to_measure,
             measure_channels=signals,
             default_output_lims=default_output_lims
         )
         stds = {}
+        aves = {}
         unstable_signals = []
         for i, signal in enumerate(signals):
             std_dev = standard_deviations[i]
@@ -544,22 +795,152 @@ class measurement_control:
                 mean = diff.mean()
                 std = diff.std()
                 stds[signal] = std
-                # Ensure mean and std are within std_dev limit.
-                if data[signal].std() > std_dev or mean > std_dev:
+                # Ensure mean diff to setpoint, and std are within std_dev limit.
+                if std > std_dev or mean > std_dev:
                     unstable_signals.append(signal)
+                # Store the average value of the signal.
+                aves[signal] = data[signal].mean()
             else:
                 std = data[signal].std()
                 stds[signal] = std
-                if data[signal].std() > std_dev:
+                if std > std_dev:
                     unstable_signals.append(signal)
-        return unstable_signals, stds
+        return unstable_signals, aves, stds, 
+    
+    
+    async def sig_check_unstability(self,
+        signals: list[str | OxfordNanonisSignalNames],
+        standard_deviations: list[float],
+        setpoints: list[float] = None,
+        time_to_measure: int = 60*10,
+        meas_to_average: int = 3,
+        meas_period: float = 0.3
+        ) -> tuple[list[str | OxfordNanonisSignalNames],
+                   dict[str | OxfordNanonisSignalNames, npt.NDArray],
+                   dict[str | OxfordNanonisSignalNames, npt.NDArray]]:
+        """
+        Uses the signals module to check the stability of signals over time.
+        
+        Parameters
+        ----------
+        signals : list[str | OxfordNanonisSignalNames]
+            List of signals to check.
+        standard_deviations : list[float]
+            List of standard deviations to check.
+        time_to_measure : int
+            Time to measure the stability in seconds.
+        setpoints : list[float]
+            List of setpoints to check the signals against.
+        meas_to_average : int
+            Number of measurements to average per period.
+        meas_period : float
+            Time between measurements in seconds.
+        """
+        # Check each signal is in the signals_sig list.
+        for signal in signals:
+            if isinstance(signal, OxfordNanonisSignalNames):
+                signal = signal.value
+            if signal not in self.signals_sig:
+                raise ValueError(f"Signal {signal} is not defined in the available signals list.")
+        # Check the lengths of the signals, standard deviations and setpoints.
+        if len(standard_deviations) != len(signals):
+            raise ValueError("Signals and standard deviations must be the same length.")
+        if setpoints and len(setpoints) != len(signals):
+            raise ValueError("Signals and setpoints must be the same length.")
+        
+        # Begin the measurement.
+        data = []
+        for i in range(meas_to_average):
+            data.append([
+                await self.mod_sig.ValGet(self.signals_sig[signal])
+                for signal in signals
+            ])
+            await asyncio.sleep(meas_period)
+        data = np.array(data)
+            
+        # Construct statistics
+        stds = {}
+        aves = {}
+        unstable_signals = []
+        for i, signal in enumerate(signals):
+            std_dev = standard_deviations[i]
+            if setpoints and setpoints[i]:
+                setpoint = setpoints[i]
+                # Calculate mean difference from setpoint.
+                diff = data[:, i] - setpoint
+                mean = diff.mean()
+                std = diff.std()
+                stds[signal] = std
+                # Ensure mean diff to setpoint, and std are within std_dev limit.
+                if std > std_dev or mean > std_dev:
+                    unstable_signals.append(signal)
+                # Store the average value of the signal.
+                aves[signal] = data[signal].mean()
+            else:
+                std = data[:, i].std()
+                stds[signal] = std
+                aves[signal] = data[signal].mean()
+                if std > std_dev:
+                    unstable_signals.append(signal)
+                    
+        return unstable_signals, aves, stds
+    
+    async def get_parameter_value(self,
+                                signal_name: str | OxfordNanonisSignalNames,
+                                output_index: int = 8,
+                                ) -> float:
+        """
+        Returns a single value of a signal. 
+        
+        If the signal can be measured directly, will use the signal module.
+        If the signal is only accessible via the sweep module, will use the sweep module,
+        which will take some additional time. To do this, also uses the output module
+        to scan across an unused output channel to perform the measurement.
+        
+        Parameters
+        ----------
+        signal_name : str | OxfordNanonisSignalNames
+            The signal name.
+        output_index : int
+            The output index to use, if requiring a sweep measurement for the signal.
+            By default channel 8.
+            
+        Returns
+        -------
+        value : float
+            The value of the signal.
+        """
+        # Convert to Signal Name
+        if isinstance(signal_name, str):
+            signal_name = OxfordNanonisSignalNames(signal_name)
+        # Check if signal is in the signal list.
+        if signal_name.value in self.signals_sig:
+            return await self.mod_sig.ValGet(self.signals_sig[signal_name.value])
+        elif signal_name.value in self.signals_meas:
+            data = await self.swp_time_measure(
+                output_index=output_index,
+                measure_time=3,
+                measure_period=300,
+                measure_channels=[signal_name.value],
+            )
+            return data[signal_name].mean()
+        else:
+            raise ValueError(f"Signal {signal_name} is not defined in the available signals list.")
+        
     
     async def set_parameter_setpoint(self, 
                                parameter: OxfordNanonisSignalNames | str, 
                                setpoint: float,
-                               approaching_setpoint: float = None) -> None:
+                               approaching_setpoint: float = None,
+                               slew_rate: float | None = None,
+                               sweep_timeout: float | None = None) -> None:
         """
-        Sets the setpoint of a parameter.
+        Sets the setpoint of a parameter, using the appropriate submodule.
+        
+        If the parameter is a temperature or magnetic field setpoint, the function
+        will use the Swp1D module to sweep the setpoint to the new value and wait 
+        for it to stabilise. If the parameter is a DC or AC output, the function 
+        will use the output to the setpoint value.
         
         Parameters
         ----------
@@ -570,45 +951,134 @@ class measurement_control:
         approaching_setpoint : float
             The setpoint value to approach the setpoint.
             By default is calculated at 1.001 * setpoint.
+        slew_rate: float | None
+            Only applies to DC/AC voltages. The slew rate to set for the parameter.
+            By default is None.
+        sweep_timeout: float | None
+            The timeout for the sweep to complete. Only used with 
+            _set_parameter_setpoint_using_ramp. By default is None.
         """
         if isinstance(parameter, str):
             # Setpoint needs to be a known, to measure the corresponding signal.
             parameter = OxfordNanonisSignalNames(parameter)
         ## Check known mapping.
         # Define the setpoint signals.
-        setpoint_signals = {
-            tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT: tramea_signals.HE3_PROBE_TEMPERATURE,
-            tramea_signals.MAGNETIC_FIELD_SETPOINT: tramea_signals.MAGNETIC_FIELD
-        }
-        if parameter not in setpoint_signals:
-            raise ValueError("Parameter must be either temperature or magnetic field setpoint.")        
+        if parameter in SENSOR_TO_SETPOINTS:
+            # Re-assign to setpoint equivalent signal
+            parameter = SENSOR_TO_SETPOINTS[parameter]
+            
+        # Check if the parameter is a valid system signal.    
+        if not(parameter in SETPOINTS_TO_SENSORS
+               or parameter.value in self.signals_sig):
+            raise ValueError(
+                f"Parameter {parameter} must be either temperature or magnetic field setpoint, or Signal.")        
+        
+        # Hard limit check the setpoint
+        if parameter in _LIMITS:
+            if not self._check_limits((setpoint, setpoint), _LIMITS[parameter]):
+                raise ValueError(f"Setpoint {setpoint} must be within the limits {_LIMITS[parameter]}.")
+        print(setpoint)
         
         # Setup the approach setpoint if not given.
         if approaching_setpoint is None:
             match parameter:
-                case tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT:
+                case tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT | tramea_signals.HE4_VTI_TEMPERATURE_SETPOINT:
                     # Temperature is positive definite.
                     approaching_setpoint = setpoint + 0.001 
+                    if setpoint < 0.265:
+                        warnings.warn(f"Temperature setpoint '{setpoint:3.3f} K' is below the base temperature 0.265 K.")
+                    # As He3 Temp has no direct set method, use 1D Swp to set the field.
+                    await self._set_parameter_setpoint_using_swp(
+                        parameter,
+                        setpoint,
+                        approaching_setpoint,
+                        sweep_timeout
+                    )
                 case tramea_signals.MAGNETIC_FIELD_SETPOINT:
                     # Field can be positive or negative, but can't exceed certain values.
                     approaching_setpoint = setpoint*0.999 # Don't exceed setpoint magnitude.
-                
+                    # As Field has no direct set method, use 1D Swp to set the field.
+                    await self._set_parameter_setpoint_using_swp(
+                        parameter,
+                        setpoint,
+                        approaching_setpoint,
+                        sweep_timeout
+                    )
+                case (tramea_signals.DC_OUTPUT1 | tramea_signals.DC_OUTPUT2
+                    | tramea_signals.DC_OUTPUT3 | tramea_signals.DC_OUTPUT4 
+                    | tramea_signals.DC_OUTPUT5 | tramea_signals.DC_OUTPUT6 
+                    | tramea_signals.DC_OUTPUT7 | tramea_signals.DC_OUTPUT8):
+                    # "Output 1 (V)"
+                    idx = int(parameter.value.replace("Output ", "").replace(" (V)", ""))
+                    lims = self._limits(parameter)
+                    if not self._check_limits((setpoint, setpoint), lims):
+                        raise ValueError(f"Setpoint {setpoint} must be within the limits {lims}.")
+                    if slew_rate:
+                        # Store the original slew rate and set the new value.
+                        init_slew = await self.out_get_slew_rate(idx)
+                        await self.out_set_slew_rate(idx, slew_rate)
+                    # Set the new voltage.
+                    await self.mod_out.ValSet(idx, setpoint)
+                    if slew_rate:
+                        # Retore the old slewrate
+                        await self.out_set_slew_rate(idx, init_slew)
+                case tramea_signals.AC_OUTPUT1_AMP | tramea_signals.AC_OUTPUT2_AMP | tramea_signals.AC_OUTPUT3_AMP | tramea_signals.AC_OUTPUT4_AMP:
+                    # "LI Mod 1 Amp (V)"
+                    idx = int(parameter.value.replace("LI Mod ", "").replace(" AMP (V)", ""))
+                    lims = self._limits(parameter)
+                    if not self._check_limits((setpoint, setpoint), lims):
+                        raise ValueError(f"Setpoint {setpoint} must be within the limits {lims}.")
+                    await self.mod_lock.ModAmpSet(idx, setpoint)
+                case _:
+                    raise ValueError(f"Parameter '{parameter}' must be a known signal or setpoint.")
+                    
+    async def _set_parameter_setpoint_using_swp(
+        self,
+        parameter: OxfordNanonisSignalNames | str, 
+        setpoint: float, 
+        approaching_setpoint: float,
+        sweep_timeout: float = None
+    ):  
+        """
+        Sets the setpoint of a parameter using the 1D Sweeper module.
+        """
+        if isinstance(parameter, str):
+            parameter = OxfordNanonisSignalNames(parameter)
+        # Check the parameter is a sweep signal.
+        if parameter.value not in self.signals_sweep:
+            raise ValueError(f"Parameter {parameter} is not a valid sweep signal.")
+        
         # Determine the approaching direction:
         if setpoint == approaching_setpoint:
             raise ValueError("Setpoint and approaching setpoint cannot be the same.")
  
         direction = 1 if setpoint > approaching_setpoint else 0
+        magnitude = 1 if abs(setpoint) > abs(approaching_setpoint) else 0
+        if direction and magnitude:
+            # i.e. (1, 2). Must be +ve, larger setpoint and larger abs
+            limits = (approaching_setpoint, setpoint)
+        elif direction and not magnitude:
+            # i.e. (-2, -1) Must be -ve, larger sepoint but smaller abs
+            limits = (approaching_setpoint, setpoint)
+        elif not direction and magnitude:
+            # i.e. (-2, -1) Must be -ve, smaller setpoint but larger abs
+            limits = (setpoint, approaching_setpoint)
+        elif not direction and not magnitude:
+            # i.e. (1, 2) Must be +ve, smaller setpoint and smaller abs
+            limits = (setpoint, approaching_setpoint)
+            
         limits = (approaching_setpoint, setpoint) if direction else (setpoint, approaching_setpoint)
         
         # Store old sweep signal and limits
-        current_sweep = await self.get_sweep_signal()
-        current_limits = await self.get_limits()
-        current_settings = await self.get_sweep_parameters()
+        current_sweep = await self.swp_get_sweep_signal()
+        current_settings = await self.swp_get_parameters()
+        current_limits = await self.swp_get_limits()
+        self._async_timeout_params = (current_sweep, current_settings, current_limits)
         
         # Set the new sweep signal and limits
-        await self.set_sweep_signal(parameter)
-        await self.set_limits(limits)
-        await self.set_sweep_parameters(
+        await self.swp_set_sweep_signal(parameter.value)
+        await self.swp_set_limits(limits)
+        await self.swp_set_parameters(
             initial_settling_time=300,
             maximum_slew_rate=current_settings[1],
             number_of_steps=current_settings[2],
@@ -618,18 +1088,17 @@ class measurement_control:
             settling_time=current_settings[6]
         )
         
+        print(sweep_timeout)
+        
         # Start the sweep
-        await self.start(
+        await self.swp_ramp_start(
             get_data=False,
             sweep_direction=direction,
             save_basename="setpoint_change",
-            reset_signal=False
+            reset_signal=False,
+            sweep_timeout=sweep_timeout
         )
         
-        # Restore settings:
-        await self.set_sweep_signal(current_sweep)
-        await self.set_limits(current_limits)
-        await self.set_sweep_parameters(*current_settings)
         return
     
     async def use_ramp_to_recondense(self):
@@ -640,12 +1109,13 @@ class measurement_control:
         Therefore a `stop` signal must be sent to the Nanonis controller asynchronously
         after the setpoint is initialised.
         """
-        init_params = await self.get_sweep_parameters()
-        init_sweep = await self.get_sweep_signal()
-        await self.set_sweep_signal(tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT)
+        init_params = await self.swp_get_parameters()
+        init_lims = await self.swp_get_limits()
+        init_sweep = await self.swp_get_sweep_signal()
+        await self.swp_set_sweep_signal(tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT)
         # this is the setpoint required to recondense the He3 probe
         base_temp_reset = (0, 0.001) #ramp from 0K
-        await self.set_limits(base_temp_reset)
+        await self.swp_set_limits(base_temp_reset)
         
         temperature_setpoint_params = {
             "initial_settling_time" : 300,
@@ -656,33 +1126,18 @@ class measurement_control:
             "save_dialog" : False,
             "settling_time" : init_params[6]
         }
-        await self.set_sweep_parameters(**temperature_setpoint_params)
+        await self.swp_set_parameters(**temperature_setpoint_params)
         # Save init_params + sweep signal in case of async timeout.
-        self._async_timeout_params = (init_sweep, init_params)
+        self._async_timeout_params = (init_sweep, init_params, init_lims)
         
-        await self.start(
+        await self.swp_ramp_start(
             get_data=False,
             sweep_direction=1,
             save_basename="recondense_he3_probe",
             reset_signal=False
         )
-        
-        await self.set_sweep_signal(init_sweep)
-        await self.set_sweep_parameters(**init_params)
-        self._async_timeout_params = None
-    
-    async def stop_ramp(self) -> None:
-        """ Stops the async 1DSwp ramp. """
-        print("Stopping ramp signal...")
-        await self.mod_swp.Stop()
-        print("Stopped.")
-        if self._async_timeout_params:
-            sweep, params = self._async_timeout_params
-            await self.set_sweep_signal(sweep)
-            await self.set_sweep_parameters(**params)
-            self._async_timeout_params = None
             
-    async def condense_he3_probe(self, 
+    async def condense_he3_probe(self,
                                  base: float = 0.26, 
                                  std: float = 0.01,
                                  time: int = 120) -> None:
@@ -707,21 +1162,26 @@ class measurement_control:
             await asyncio.wait_for(self.use_ramp_to_recondense(),
                                timeout=dt.timedelta(minutes=5).total_seconds())
         except asyncio.TimeoutError:
-            print("Recondensation initalised. Stopping ramp signal.")
-            await self.stop_ramp()
+            await asyncio.sleep(2)
+            # Stop_ramp has print commands before & after.
+            await self.swp_ramp_stop()
+            # Wait to check stability.
+            await asyncio.sleep(2)
         # Wait for the He3 probe to recondense to the base temperature.
-        uSigs, uStd = await self.check_unstability(
-            signals=[tramea_signals.HE3_PROBE_TEMPERATURE],
+        print("Checking He3 probe temperature stability...")
+        tsig = tramea_signals.HE3_PROBE_TEMPERATURE
+        uSigs, uAves, uStd = await self.swp_check_unstability(
+            signals=[tsig],
             standard_deviations=[std],
             setpoints=[base],
             time_to_measure=time,
             output_index=8
         )
+        
         while len(uSigs) > 0:
-            tVal = await self.get_signal_value(tramea_signals.HE3_PROBE_TEMPERATURE)
-            print(f"Temp. unstable: {tVal} +- {uStd[tramea_signals.HE3_PROBE_TEMPERATURE]} K. Re-measuring...")
-            uSigs, uStd = await self.check_unstability(
-                signals=[tramea_signals.HE3_PROBE_TEMPERATURE],
+            print(f"Temp. unstable: {uAves[tsig]} +- {uStd[tsig]} K. Re-measuring...")
+            uSigs, uAves, uStd = await self.swp_check_unstability(
+                signals=[tsig],
                 standard_deviations=[std],
                 setpoints=[base],
                 time_to_measure=time,
@@ -735,7 +1195,7 @@ class measurement_control:
                                           setpoint: float,
                                           std: float,
                                           time: int,
-                                          approach_setpoint: float = None) -> None:
+                                          approach_setpoint: float = None) -> float:
         """
         Sets a parameter to a setpoint and waits for it to stabilise.
         
@@ -751,54 +1211,73 @@ class measurement_control:
             The time to measure the stability in seconds.
         approach_setpoint : float
             The setpoint value to approach the setpoint.
+            By default None (see set_parameter_setpoint for default behaviour).
+            
+        Returns
+        -------
+        float
+            The averaged value of the parameter.
         """
         # Check if signal is temperature or field:
         if isinstance(parameter, str):
             # Setpoint needs to be a known, to measure the corresponding signal.
             parameter = OxfordNanonisSignalNames(parameter)
-        # Set param and param_setpoint disctinctions
-        match parameter:
-            case tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT:
-                param_setpoint = tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT
-                param = tramea_signals.HE3_PROBE_TEMPERATURE
-            case tramea_signals.HE3_PROBE_TEMPERATURE:
-                param_setpoint = tramea_signals.HE3_PROBE_TEMPERATURE_SETPOINT
-                param = tramea_signals.HE3_PROBE_TEMPERATURE
-            case tramea_signals.MAGNETIC_FIELD_SETPOINT:
-                param_setpoint = tramea_signals.MAGNETIC_FIELD_SETPOINT
-                param = tramea_signals.MAGNETIC_FIELD
-            case tramea_signals.MAGNETIC_FIELD:
-                param_setpoint = tramea_signals.MAGNETIC_FIELD_SETPOINT
-                param = tramea_signals.MAGNETIC_FIELD
-            case _:
-                param_setpoint = parameter
-                param = parameter
         
+        # Set param and param_setpoint disctinctions
+        if parameter in SENSOR_TO_SETPOINTS:
+            param_setpoint = SENSOR_TO_SETPOINTS[parameter]
+            param = parameter
+        elif parameter in SETPOINTS_TO_SENSORS:
+            param = SETPOINTS_TO_SENSORS[parameter]
+            param_setpoint = parameter
+        else:
+            param_setpoint = parameter
+            param = parameter
+            
+        # If parameter cannot be set as a measurement parameter
+        if param.value not in self.signals_meas and param.value not in self.signals_sig:
+            raise ValueError(
+                f"Parameter {param} not measurable via signals or sweep modules.")
+        
+        # Set the setpoint
         await self.set_parameter_setpoint(
             parameter=param_setpoint,
             setpoint=setpoint,
-            approaching_setpoint=approach_setpoint
+            approaching_setpoint=approach_setpoint,
+            sweep_timeout=None
         )
-        uSig, uStd = await self.check_unstability(
-            signals=[param],
-            standard_deviations=[std],
-            setpoints=[setpoint],
-            time_to_measure=time
-        )
+
+        # Depending on the parameter, use the signals or sweep module to measure.
+        if param.value in self.signals_sig:
+            check_unstability = self.sig_check_unstability
+            check_args = [
+                [param],
+                [std],
+                [setpoint],
+                time,
+                5,
+            ]
+        else:
+            check_unstability = self.swp_check_unstability
+            check_args = [
+                [param],
+                [std],
+                [setpoint],
+                time
+            ]
+        
+        # Check the stability of the parameter.
+        uSig, uAves, uStd = await check_unstability(*check_args)
+        
         while len(uSig) > 0:
             # Some meas / sweep signals are not in the signals_sig list.
-            if param.name in self.signals_sig:
-                val = await self.get_signal_value(param)
-                print(f"Parameter unstable: {val} +- {uStd[param]}. Re-measuring...")
-            else:
-                print(f"Parameter unstable: {param} (Variation:{uStd[param]}). Re-measuring...")
-            uSig, uStd = await self.check_unstability(
-                signals=[param],
-                standard_deviations=[std],
-                setpoints=[setpoint],
-                time_to_measure=time
-            )
-        return
+            print(f"Parameter unstable: {uAves[param]} +- {uStd[param]}. Re-measuring...")
+            uSig, uAves, uStd = await check_unstability(*check_args)
+        return uAves[param].mean()
+    
+            
+        
+        
     
 def generate_log_setpoints(limits: tuple[float, float],
                            datapoints: int, 
