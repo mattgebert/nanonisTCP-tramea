@@ -11,7 +11,8 @@ class OxfordNanonisSignalNames(Enum):
     # He4 Probe Default Signal Names
     HE4_VTI_TEMPERATURE = "He4 Sample Space (K)"
     HE4_VTI_TEMPERATURE_SETPOINT = "He4 Sample Space Setp. (K)"
-    HE4_EXTRA_TEMP_SENSOR = "Sample Temperature (K)"
+    HE4_EXTRA_TEMP_SENSOR = "He4 Sample Temp (K)"
+    HE4_EXTRA_TEMP_SENSOR_SETPOINT = "He4 Sample Temp Setp. (K)"
     # DC Inputs
     DC_INPUT1 = "Input 1 (V)"
     DC_INPUT2 = "Input 2 (V)"
